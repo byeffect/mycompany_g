@@ -1,0 +1,32 @@
+MODULE MyCompanyCustom;
+
+REQUIRE Eval, ProcessMonitor, Backup,
+        Individual, IndividualImport, IndividualInitial, Employee, EmployeeImport,
+        LegalEntity, LegalEntityImport,
+        Company, CompanyInitial,
+        Category, CategoryImport, CategoryImage,
+        ServiceP, ServiceImport,
+        Product, ProductImport,
+        ItemVariant, ItemHistory,
+        ItemAttribute, ItemAttributeImport,
+        Uom, UomImport,
+        BarCode, BarCodeHistory, BarCodeImport,
+        Location, LocationSelection, LocationImport,
+        Package, PackageLot,
+        Receipt, ReceiptFilter, ReceiptSelection,
+        ReceiptReady, ReceiptDone, ReceiptPutAway, ReceiptCanceled,
+        ReceiptInv,
+        ReceiptSearch, ReceiptPartner, ReceiptImport, ReceiptInitial,
+        ReceiptPrint, ReceiptItemPrint,
+        ReceiptLot, ReceiptLotPrint,
+        ReceiptPackage,
+        InvLedger, InvLedgerItem, InvLedgerLot,
+        InventoryReport, InventoryValuation, ProductMoves, InventoryReportLot,
+    
+        ReceiptDashboardMobile;
+
+//EXTEND CLASS Theme {
+//    sketchy 'Sketchy',
+//    yeti 'Yeti',
+//    simplex 'Simplex'
+//}

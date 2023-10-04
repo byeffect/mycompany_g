@@ -1,0 +1,29 @@
+MODULE ReceiptScan;
+
+REQUIRE Receipt, Package, Lot;
+
+NAMESPACE Inventory;
+
+CLASS ReceiptScan 'Сканирование на приемке';
+receipt = DATA Receipt (ReceiptScan) NONULL DELETE INDEXED;
+
+countScan 'Просканировано' (Receipt r) = GROUP SUM 1 IF receipt(ReceiptScan s) = r MATERIALIZED;
+
+user = DATA CustomUser (ReceiptScan);
+user(ReceiptScan s) <- currentUser() WHEN SET(s IS ReceiptScan);
+
+dateTime 'Время' = DATA DATETIME (ReceiptScan);
+dateTime(ReceiptScan s) <- currentDateTime() WHEN SET(s IS ReceiptScan);
+time 'Время' (ReceiptScan s) = TIME(dateTime(s));
+
+package = DATA Package (ReceiptScan);
+referencePackage 'Упаковка' (ReceiptScan r) = reference(package(r));
+
+lot = DATA Lot (ReceiptScan);
+idLot (ReceiptScan l) = id(lot(l));
+nameProduct (ReceiptScan l) = nameProduct(lot(l));
+
+quantity '{Quantity}' = DATA NUMERIC[16,3] (ReceiptScan);
+quantity(ReceiptScan r) <- 1 WHEN SET(r IS ReceiptScan);
+
+scan (Receipt r, Lot l) = GROUP MAX ReceiptScan rs IF receipt(rs) = r AND lot(rs) = l;
