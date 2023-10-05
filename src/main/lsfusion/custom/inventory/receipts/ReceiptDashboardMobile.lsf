@@ -111,9 +111,6 @@ NAVIGATOR {
     }
 }
 
-// to delete
-packageReference (Receipt r, STRING[100] reference) = GROUP MIN Package p IF in(r, p) AND reference(p) = reference;
-
 // scan
 barcode = DATA LOCAL STRING () CHANGEKEY 'F4';
 scanBarcode(Receipt r, Package p) {
