@@ -1,99 +1,48 @@
 MODULE ReceiptDashboardMobile;
 
-REQUIRE ReceiptDone, ReceiptPackage, PackageLot, ReceiptScan, Mobile;
+REQUIRE ReceiptPackageMobile, ReceiptPutAwayLot;
 
 NAMESPACE Inventory;
 
-htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + number(r) + '</b>', scheduledDate(r), '<font size="-1">' + nameVendor(r) + '</font>');
-
-htmlReceipt '' (PackageLine l) = HTML (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + idLot(l) + '</font>');
-
-htmlReceipt '' (ReceiptScan l) = HTML (CONCAT '&nbsp;', time(l), '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + idLot(l) + '</font>', '<i>' + referencePackage(l) + '</i>');
-
-FORM receiptPackage
-    OBJECTS r = Receipt PANEL
-    PROPERTIES(r) READONLY htmlReceipt
-
-    OBJECTS p = Package NULL PANEL
-    PROPERTIES(p) READONLY reference
-    FILTERS in(r, p)
-    
-    OBJECTS s = ReceiptScan
-    PROPERTIES(s) READONLY htmlReceipt
-    PROPERTIES(s) NEWSESSION '' = DELETE GRID
-    FILTERS receipt(s) = r
-    
-    OBJECTS pc = Package
-    PROPERTIES(pc) READONLY '' = reference
-    FILTERS in(r, pc)
-    
-    OBJECTS pl = PackageLine
-    PROPERTIES(pl) READONLY htmlReceipt BACKGROUND RGB(212,255,212) IF scan(r, lot(pl))
-    FILTERS package(pl) = p
-;
-
-DESIGN receiptPackage {
-    caption = badged('Приемка', number(r));
-    OBJECTS {
-        class = '';
-        MOVE PROPERTY(htmlReceipt(r)) { 
-            caption = '';
-            alignment = STRETCH; 
-        }
-        REMOVE BOX(r);
-
-        MOVE PROPERTY(reference(p)) { 
-            caption = 'Упаковка'; 
-            alignment = STRETCH;
-        }
-
-        NEW pane {
-            fill = 1;
-            tabbed = TRUE;
-            NEW scans {
-                caption = badged('Принято', countScan(r));
-                MOVE GRID(s);
-                REMOVE BOX(s);
-            }
-            NEW packageContent {
-                caption = badged('Содержимое', countLines(p));
-                MOVE GRID(pl);
-                REMOVE BOX(pl);
-            }
-            NEW packages {
-                caption = badged('Упаковки', countPackages(r));
-                MOVE GRID(pc);
-                REMOVE BOX(pc);
-            }
-        }
-    }
-    REMOVE TOOLBARBOX;
-}
-
-selectPackage 'Выбрать' (Package p) {
-    SEEK receiptPackage.p = p;
-}
-
-EXTEND FORM receiptPackage
-    PROPERTIES(pc) selectPackage
-;
-DESIGN receiptPackage {
-    packages {
-        MOVE PROPERTY(selectPackage(pc)) { alignment = STRETCH; }
-    }
-}
-
 receive 'Принять' (Receipt r) {
     SHOW receiptPackage OBJECTS r = r DOCKED NOWAIT;
-}
+} CHANGEMOUSE 'DBLCLK';
 
 markAsDone 'Завершить' (Receipt r) {
-    NEWSESSION APPLY { done(r) <- TRUE; }
+    NEWSESSION { 
+        done(r) <- TRUE;
+        putAway(r) <- TRUE;
+        done(ReceiptLine l) <- quantityScan(l) WHERE receipt(l) = r;
+        done(ReceiptLine l, Lot lt) <- quantityScan(r, lt) IF product(l) = product(lt) WHERE receipt(l) = r;
+        
+        FOR NUMERIC[16,3] q = quantityScan(r, product(ReceiptLine rl), Location l) INLINE NEW p = ReceiptPutAway DO {
+            receiptLine(p) <- rl;
+            location(p) <- l;
+            quantity(p) <- q;
+            
+            quantity(p, Lot lt) <- quantityScan(r, lt, l) IF product(rl) = product(lt);
+        }
+        
+        APPLY;
+    }
 } CONFIRM;
 
+open 'Открыть' (Receipt r) {
+    NEWSESSION {
+        readonlyReceipt() <- TRUE;
+        SHOW receiptPackage OBJECTS r = r DOCKED NOWAIT;
+    }
+} CHANGEMOUSE 'DBLCLK';
 return 'Вернуть' (Receipt r) {
-    NEWSESSION APPLY { done(r) <- NULL; }
-}
+    NEWSESSION { 
+        done(r) <- NULL;
+        putAway(r) <- NULL;
+        done(ReceiptLine l) <- NULL WHERE receipt(l) = r;
+        done(ReceiptLine l, Lot lt) <- NULL WHERE receipt(l) = r;
+        DELETE ReceiptPutAway p WHERE receipt(receiptLine(p)) = r;
+        APPLY;
+    }
+} CONFIRM;
 
 FORM receiptDashboard 'Приемка'
     OBJECTS rr = Receipt
@@ -103,8 +52,8 @@ FORM receiptDashboard 'Приемка'
     
     OBJECTS rd = Receipt
     PROPERTIES(rd) READONLY htmlReceipt
-    PROPERTIES(rd) return
-    FILTERS status(rd) = ReceiptStatus.done
+    PROPERTIES(rd) open, return
+    FILTERS status(rd) = ReceiptStatus.done OR status(rd) = ReceiptStatus.putAway
     FILTERGROUP lastDays
         FILTER 'Последние' executionDate(rd) >= subtract(currentDate(), 1)
 ;
@@ -135,7 +84,12 @@ DESIGN receiptDashboard {
                 MOVE GRID(rd) {
                     PROPERTY(htmlReceipt(rd)) { caption = ''; }
                 }
-                MOVE PROPERTY(return(rd)) { alignment = STRETCH; }
+                NEW doneActions {
+                    alignment = STRETCH;
+                    horizontal = TRUE;
+                    MOVE PROPERTY(open(rd)) { fill = 2; }
+                    MOVE PROPERTY(return(rd)) { fill = 1; }
+                }
                 REMOVE BOX(rd);
             }
         }
@@ -146,53 +100,6 @@ DESIGN receiptDashboard {
 NAVIGATOR {
     dashboards {
         NEW receiptDashboard;
-    }
-}
-
-// scan
-barcode = DATA LOCAL STRING () CHANGEKEY 'F4';
-scanBarcode(Receipt r, Package p) {
-    INPUT b = STRING DO {
-        IF packageReference(r, b) THEN {
-            SEEK receiptPackage.p = packageReference(r, b);
-        } ELSE {
-            IF NOT p THEN
-                MESSAGE 'Не выбрана упаковка. Сначала просканируйте ее.';
-            ELSE {
-                IF NOT lot(b) THEN
-                    MESSAGE 'Не найден код партии';
-                ELSE {
-                    IF scan(r, lot(b)) THEN
-                        MESSAGE 'Код партии уже был принят';
-                    ELSE {
-                        IF NOT GROUP SUM 1 IF package(PackageLine pl) = p AND lot(pl) = lot(b) THEN
-                            MESSAGE 'Этой партии не должно быть в текущей упаковке';
-                        ELSE {
-                            NEWSESSION APPLY {
-                                NEW s = ReceiptScan {
-                                    receipt(s) <- r;
-                                    package(s) <- p;
-                                    lot(s) <- lot(b);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-EXTEND FORM receiptPackage
-    PROPERTIES() barcode ON CHANGE scanBarcode(r, p)
-;
-DESIGN receiptPackage {
-    OBJECTS {
-        MOVE PROPERTY(barcode()) AFTER PROPERTY(htmlReceipt(r)) {
-            caption = '';
-            placeholder = 'Введите штрих-код';
-            alignment = STRETCH;
-        }
     }
 }
 
