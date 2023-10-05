@@ -12,7 +12,9 @@ done 'Done' = DATA BOOLEAN (Receipt);
 status (Receipt r) += WHEN done(r) THEN ReceiptStatus.done;
 
 executionDateTime 'Execution Date' = DATA DATETIME (Receipt);
-WHEN SET(done(Receipt r)) AND NOT CHANGED(executionDateTime(r)) DO executionDateTime(r) <- currentDateTime(); 
+WHEN SET(done(Receipt r)) AND NOT CHANGED(executionDateTime(r)) DO executionDateTime(r) <- currentDateTime();
+@defineDateTimeAggregation(Receipt, execution, 'Execution ');
+
 executionDateTime 'Execution Date' (ReceiptLine l) = executionDateTime(receipt(l));
 
 done '{Received}' = DATA NUMERIC[16,3] (ReceiptLine);

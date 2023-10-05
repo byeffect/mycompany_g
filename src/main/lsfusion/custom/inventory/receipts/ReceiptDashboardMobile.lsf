@@ -1,6 +1,6 @@
 MODULE ReceiptDashboardMobile;
 
-REQUIRE Receipt, ReceiptPackage, PackageLot, ReceiptScan, Mobile;
+REQUIRE ReceiptDone, ReceiptPackage, PackageLot, ReceiptScan, Mobile;
 
 NAMESPACE Inventory;
 
@@ -20,11 +20,11 @@ FORM receiptPackage
     
     OBJECTS s = ReceiptScan
     PROPERTIES(s) READONLY htmlReceipt
-    PROPERTIES(s) NEWSESSION DELETE GRID
+    PROPERTIES(s) NEWSESSION '' = DELETE GRID
     FILTERS receipt(s) = r
     
     OBJECTS pc = Package
-    PROPERTIES(pc) READONLY reference
+    PROPERTIES(pc) READONLY '' = reference
     FILTERS in(r, pc)
     
     OBJECTS pl = PackageLine
@@ -87,20 +87,58 @@ receive 'Принять' (Receipt r) {
     SHOW receiptPackage OBJECTS r = r DOCKED NOWAIT;
 }
 
+markAsDone 'Завершить' (Receipt r) {
+    NEWSESSION APPLY { done(r) <- TRUE; }
+} CONFIRM;
+
+return 'Вернуть' (Receipt r) {
+    NEWSESSION APPLY { done(r) <- NULL; }
+}
+
 FORM receiptDashboard 'Приемка'
-    OBJECTS r = Receipt
-    PROPERTIES(r) READONLY htmlReceipt
-    PROPERTIES(r) receive
+    OBJECTS rr = Receipt
+    PROPERTIES(rr) READONLY htmlReceipt
+    PROPERTIES(rr) receive, markAsDone
+    FILTERS status(rr) = ReceiptStatus.ready
+    
+    OBJECTS rd = Receipt
+    PROPERTIES(rd) READONLY htmlReceipt
+    PROPERTIES(rd) return
+    FILTERS status(rd) = ReceiptStatus.done
+    FILTERGROUP lastDays
+        FILTER 'Последние' executionDate(rd) >= subtract(currentDate(), 1)
 ;
+
+countReady = GROUP SUM 1 IF status(Receipt rr) = ReceiptStatus.ready;
 
 DESIGN receiptDashboard {
     OBJECTS {
         class = '';
-        MOVE GRID(r) {
-            PROPERTY(htmlReceipt(r)) { caption = ''; }
+        NEW pane {
+            fill = 1;
+            tabbed = TRUE;
+            NEW ready {
+                caption = badged('В работе', countReady());
+                MOVE GRID(rr) {
+                    PROPERTY(htmlReceipt(rr)) { caption = ''; }
+                }
+                NEW readyActions {
+                    alignment = STRETCH;
+                    horizontal = TRUE;
+                    MOVE PROPERTY(receive(rr)) { fill = 2; }
+                    MOVE PROPERTY(markAsDone(rr)) { fill = 1; }
+                }
+                REMOVE BOX(rr);
+            }
+            NEW done {
+                caption = 'Принятые';
+                MOVE GRID(rd) {
+                    PROPERTY(htmlReceipt(rd)) { caption = ''; }
+                }
+                MOVE PROPERTY(return(rd)) { alignment = STRETCH; }
+                REMOVE BOX(rd);
+            }
         }
-        MOVE PROPERTY(receive(r)) { alignment = STRETCH; }
-        REMOVE BOX(r);
     }
     REMOVE TOOLBARBOX;
 }
