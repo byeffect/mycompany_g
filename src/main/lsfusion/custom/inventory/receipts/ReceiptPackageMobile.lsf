@@ -17,7 +17,6 @@ htmlReceipt '' (ReceiptScan l) = HTML (CONCAT '&nbsp;',
     '<i>' + referencePackage(l) + '</i>',
     '<u>' + nameLocation(l) + '</u>');
 
- quantityPackageLine '{Quantity}' (Package p) = GROUP SUM quantity(PackageLine l) IF package(l) = p;
 
 // Форма приемки
 FORM receiptPackage
