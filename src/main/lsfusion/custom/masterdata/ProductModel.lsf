@@ -1,0 +1,47 @@
+MODULE ProductModel;
+
+REQUIRE Product;
+
+NAMESPACE MasterData;
+
+CLASS Model 'Модель';
+id '{ID}' = DATA STRING[100] (Model) NONULL DELETE INDEXED;
+model = GROUP AGGR Model m BY id(m);
+
+product = DATA Product (Model);
+nameProduct 'Товар' (Model m) = name(product(m));
+productModel(STRING id) = product(model(id));
+countModels = GROUP SUM 1 BY product(Model m);
+
+EXTEND FORM item
+    OBJECTS model = Model
+    PROPERTIES (model) id
+    FILTERS product(model) = i
+;
+
+DESIGN item{
+    tabs{
+        NEW model{
+            caption = badged('Модели', countModels(i));
+            showIf = i IS Product;
+            MOVE BOX (model);
+        }
+    }
+}
+
+countModelsWithoutProduct = GROUP SUM 1 IF Model m IS Model AND NOT product(m);
+
+FORM modelMatching 'Модели'
+    OBJECTS m = Model
+    PROPERTIES (m) id READONLY, nameProduct
+
+    FILTERGROUP matching
+        FILTER 'Не обработанные' NOT product(m) DEFAULT
+;
+
+
+NAVIGATOR {
+    masterData{
+        NEW modelMatching HEADER badged('Модели', countModelsWithoutProduct());
+    }
+}

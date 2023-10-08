@@ -1,0 +1,128 @@
+MODULE SupplierImportGsheets;
+
+REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot;
+
+NAMESPACE Inventory;
+
+isDefault 'По умолчанию' = DATA BOOLEAN (ServiceGoogleAccount);
+
+WHEN LOCAL SET (isDefault(ServiceGoogleAccount a)) DO isDefault(ServiceGoogleAccount aa) <- NULL WHERE aa != a;
+
+EXTEND FORM integrationData
+    PROPERTIES (serviceAccount) isDefault
+;
+defaultAccount = GROUP MAX ServiceGoogleAccount a IF isDefault(a);
+
+//импорт тваров ghseets
+idImportItemsGsheets 'ID таблицы импорта товаров' = DATA STRING ();
+
+importItemsGsheets 'Импорт товаров ghseets'(){
+    NEWSESSION {
+        LOCAL id = STRING(INTEGER);
+        LOCAL type = STRING(INTEGER);
+        LOCAL address = STRING(INTEGER);
+        LOCAL name = STRING(INTEGER);
+
+        getValuesRange(idImportItemsGsheets(), 'SKU!A3:D', defaultAccount());
+        valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+        LOCAL str = STRING();
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+        IMPORT CSV ',' NOHEADER FROM resultFile() TO id, type, address, name;
+
+        FOR [GROUP MAX INTEGER i BY id(i)](STRING[100] id) AND NOT model(id) NEW m = Model DO{
+            id(m) <- id;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY id(i)](STRING id) AND name(x) AND Model m = model(id) AND NOT productModel(id) NEW p = Product DO{
+            product(m) <- p;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY id(i)](STRING id) AND name(x) AND Product p = productModel(id) DO{
+            dataName(p) <- name(x);
+            category(p) <- GROUP MAX Category c IF c IS Category;
+        }
+        APPLY;
+    }
+}
+
+imei = DATA LOCAL STRING(INTEGER);
+model = DATA LOCAL STRING (INTEGER);
+techName = DATA LOCAL STRING (INTEGER);
+date = DATA LOCAL STRING (INTEGER);
+box = DATA LOCAL STRING (INTEGER);
+dateBox = DATA LOCAL STRING (INTEGER);
+
+line (Receipt r, Product p) = GROUP MAX ReceiptLine l BY receipt(l), product(l);
+packageLineLot (Package p, Lot lot) = GROUP MAX PackageLine l BY package(l), lot(l);
+
+idImportSupplier'ID таблицы импорта поставщиков' = DATA STRING ();
+//'1ubpszOqjXkVNpDYgK8s3G9G6W9TmzP4pJZ5oR8la0YA'
+importSupplier2 'Импорт данных поставщика 2'(){
+    NEWSESSION {
+        LOCAL serviceAccountGoogle = ServiceGoogleAccount();
+        serviceAccountGoogle() <- GROUP MAX ServiceGoogleAccount s IF clientEmail(s) = 'lsfusion-gsheets@ace-ensign-380611.iam.gserviceaccount.com';
+        getValuesRange(idImportSupplier(), 'Поставщик 2!A3:F', serviceAccountGoogle());
+        valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+        LOCAL str = STRING();
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+        IMPORT CSV ','  NOHEADER FROM resultFile() TO imei, model, techName, date, box, dateBox;
+        FOR [GROUP MAX INTEGER i BY model(i)](STRING[100] model) AND NOT model(model) NEW m = Model DO{
+            id(m) <- model;
+        }
+
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND NOT lot(imei) AND Product p = productModel(model(x)) NEW l = Lot DO{
+            id(l) <- imei;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Product p = productModel(model(x)) DO{
+            product(l) <- p;
+        }
+
+        //создание приемок
+        FOR [GROUP MAX INTEGER i BY dateBox(i)](STRING date) AND NOT receipt(date) NEW r = Receipt DO{
+            number(r) <- date;
+            type(r) <- receiptType('receipt');
+        }
+
+        //создание строк приемки
+        FOR INTEGER x = [GROUP MAX INTEGER i BY model(i), dateBox(i)](STRING model, STRING date) AND Receipt r = receipt(date) AND Product p = productModel(model) AND NOT line(r, p) NEW l = ReceiptLine DO{
+            product(l) <- p;
+            receipt(l) <- r;
+        }
+
+        //создание коробок
+        FOR INTEGER x = [GROUP MAX INTEGER i BY box(i)](STRING box) AND Receipt r = receipt(dateBox(x)) AND NOT packageReference(r, box) NEW p = Package DO{
+            reference(p) <- box;
+            in(r, p) <- TRUE;
+        }
+
+        //создание строк коробок
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)] (STRING imei) AND Receipt r = receipt(dateBox(x))
+            AND Package p = packageReference(r, box(x)) AND Lot l = lot(imei) AND NOT packageLineLot(p, l) NEW pl = PackageLine
+            DO{
+            package(pl) <- p;
+            product(pl) <- product(l);
+            lot(pl) <- l;
+        }
+        APPLY;
+    }
+}
+EXTEND FORM integrationData
+    PROPERTIES() importItemsGsheets, importSupplier2, idImportItemsGsheets, idImportSupplier
+;
+
+DESIGN integrationData{
+    serviceAccountsGoogle{
+        NEW optionsImport{
+            caption = 'Настройки импорта';
+            MOVE PROPERTY (idImportItemsGsheets());
+            MOVE PROPERTY (idImportSupplier());
+            NEW actionImport{
+                caption = 'Действия';
+                horizontal = TRUE;
+                MOVE PROPERTY (importItemsGsheets());
+                MOVE PROPERTY (importSupplier2());
+            }
+        }
+    }
+}
+
