@@ -37,6 +37,8 @@ quantity(ReceiptScan r) <- 1 WHEN SET(r IS ReceiptScan);
 
 scan (Receipt r, Lot l) = GROUP MAX ReceiptScan rs IF receipt(rs) = r AND lot(rs) = l;
 
+quantityScan 'Принято' (Receipt r, Package p) = GROUP SUM quantity(ReceiptScan s) IF receipt(s) = r AND package(s) = p;
+
 quantityScan (Receipt r, Product p) = GROUP SUM quantity(ReceiptScan s) IF receipt(s) = r AND product(s) = p;
 quantityScan (ReceiptLine l) = quantityScan(receipt(l), product(l));
 

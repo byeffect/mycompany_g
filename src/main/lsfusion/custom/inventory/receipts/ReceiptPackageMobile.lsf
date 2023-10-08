@@ -1,6 +1,6 @@
 MODULE ReceiptPackageMobile;
 
-REQUIRE ReceiptDone, ReceiptPackage, PackageLot, ReceiptScan, Mobile;
+REQUIRE ReceiptDone, ReceiptPackage, PackageLot, ReceiptScan, Mobile, Icon;
 
 NAMESPACE Inventory;
 
@@ -16,6 +16,8 @@ htmlReceipt '' (ReceiptScan l) = HTML (CONCAT '&nbsp;',
     '<font size="-2">' + idLot(l) + '</font>',
     '<i>' + referencePackage(l) + '</i>',
     '<u>' + nameLocation(l) + '</u>');
+
+ quantityPackageLine '{Quantity}' (Package p) = GROUP SUM quantity(PackageLine l) IF package(l) = p;
 
 // Форма приемки
 FORM receiptPackage
@@ -33,7 +35,9 @@ FORM receiptPackage
     FILTERS receipt(s) = r
 
     OBJECTS pc = Package
-    PROPERTIES(pc) READONLY '' = reference
+    PROPERTIES READONLY BACKGROUND IF quantityPackageLine(pc) = quantityScan(r, pc) THEN RGB(212,255,212) ELSE
+                                   IF quantityScan(r, pc) THEN RGB(255,255,212)
+                        reference(pc), quantityPackageLine(pc), quantityScan(r, pc) 
     FILTERS in(r, pc)
 
     OBJECTS pl = PackageLine
