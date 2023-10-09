@@ -46,7 +46,9 @@ return 'Вернуть' (Receipt r) {
 
 FORM receiptDashboard 'Приемка'
     OBJECTS rr = Receipt
-    PROPERTIES(rr) READONLY htmlReceipt
+    PROPERTIES(rr) READONLY BACKGROUND IF initialDemand(rr) = quantityScan(rr) THEN RGB(212,255,212) ELSE
+                                       IF quantityScan(rr) THEN RGB(255,255,212)
+                            htmlReceipt, initialDemand, quantityScan
     PROPERTIES(rr) receive, markAsDone
     FILTERS status(rr) = ReceiptStatus.ready
     
@@ -70,6 +72,8 @@ DESIGN receiptDashboard {
                 caption = badged('В работе', countReady());
                 MOVE GRID(rr) {
                     PROPERTY(htmlReceipt(rr)) { caption = ''; }
+                    PROPERTY(initialDemand(rr)) { charWidth = 4; }
+                    PROPERTY(quantityScan(rr)) { charWidth = 4; }
                 }
                 NEW readyActions {
                     alignment = STRETCH;

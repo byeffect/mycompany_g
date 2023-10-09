@@ -6,7 +6,7 @@ NAMESPACE Inventory;
 
 readonlyReceipt = DATA LOCAL BOOLEAN ();
 
-htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + number(r) + '</b>', scheduledDate(r), '<font size="-1">' + nameVendor(r) + '</font>');
+htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + number(r) + '</b>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameVendor(r) + '</font>');
 
 htmlReceipt '' (PackageLine l) = HTML (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + idLot(l) + '</font>');
 
@@ -34,9 +34,9 @@ FORM receiptPackage
     FILTERS receipt(s) = r
 
     OBJECTS pc = Package
-    PROPERTIES READONLY BACKGROUND IF quantityPackageLine(pc) = quantityScan(r, pc) THEN RGB(212,255,212) ELSE
+    PROPERTIES READONLY BACKGROUND IF quantity(pc) = quantityScan(r, pc) THEN RGB(212,255,212) ELSE
                                    IF quantityScan(r, pc) THEN RGB(255,255,212)
-                        reference(pc), quantityPackageLine(pc), quantityScan(r, pc) 
+                        reference(pc), quantity(pc), quantityScan(r, pc) 
     FILTERS in(r, pc)
 
     OBJECTS pl = PackageLine

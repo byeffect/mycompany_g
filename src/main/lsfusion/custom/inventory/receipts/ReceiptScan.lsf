@@ -16,18 +16,21 @@ dateTime 'Время' = DATA DATETIME (ReceiptScan);
 dateTime(ReceiptScan s) <- currentDateTime() WHEN SET(s IS ReceiptScan);
 time 'Время' (ReceiptScan s) = TIME(dateTime(s));
 
-package = DATA Package (ReceiptScan) INDEXED;
+package = DATA Package (ReceiptScan);
 referencePackage 'Упаковка' (ReceiptScan r) = reference(package(r));
+INDEX package(ReceiptScan s), receipt(s); 
 
-lot = DATA Lot (ReceiptScan) INDEXED;
+lot = DATA Lot (ReceiptScan);
 idLot (ReceiptScan l) = id(lot(l));
+INDEX lot(ReceiptScan s), receipt(s);
 
 product (ReceiptScan l) = product(lot(l));
 nameProduct (ReceiptScan l) = nameProduct(lot(l));
 
-location = DATA Location (ReceiptScan) INDEXED;
+location = DATA Location (ReceiptScan);
 idLocation (ReceiptScan l) = id(location(l));
 nameLocation (ReceiptScan l) = name(location(l));
+INDEX location(ReceiptScan s), receipt(s), lot(s);
 
 WHEN LOCAL SETCHANGED(lot(ReceiptScan s)) AND location(location(receipt(s)), product(s)) DO 
     location(s) <- location(location(receipt(s)), product(s));
@@ -36,6 +39,8 @@ quantity '{Quantity}' = DATA NUMERIC[16,3] (ReceiptScan);
 quantity(ReceiptScan r) <- 1 WHEN SET(r IS ReceiptScan);
 
 scan (Receipt r, Lot l) = GROUP MAX ReceiptScan rs IF receipt(rs) = r AND lot(rs) = l;
+
+quantityScan 'Принято' (Receipt r) = GROUP SUM quantity(ReceiptScan s) IF receipt(s) = r MATERIALIZED;
 
 quantityScan 'Принято' (Receipt r, Package p) = GROUP SUM quantity(ReceiptScan s) IF receipt(s) = r AND package(s) = p;
 
