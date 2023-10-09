@@ -8,14 +8,15 @@ readonlyReceipt = DATA LOCAL BOOLEAN ();
 
 htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + number(r) + '</b>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameVendor(r) + '</font>');
 
-htmlReceipt '' (PackageLine l) = HTML (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + idLot(l) + '</font>');
+htmlReceipt '' (PackageLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + idLot(l) + '</font>') + '</div>');
 
-htmlReceipt '' (ReceiptScan l) = HTML (CONCAT '&nbsp;',
+htmlReceipt '' (ReceiptScan l) = HTML ('<div>' + (CONCAT '&nbsp;',
     time(l),
+    nameUser(l),
     '<b>' + nameProduct(l) + '</b>',
     '<font size="-2">' + idLot(l) + '</font>',
     '<i>' + referencePackage(l) + '</i>',
-    '<u>' + nameLocation(l) + '</u>');
+    '<u>' + nameLocation(l) + '</u>') + '</div>');
 
 
 // Форма приемки
@@ -66,7 +67,9 @@ DESIGN receiptPackage {
             tabbed = TRUE;
             NEW scans {
                 caption = badged('Принято', countScan(r));
-                MOVE GRID(s);
+                MOVE GRID(s) {
+                    PROPERTY(htmlReceipt(r)) { valueClass = 'myclass'; }
+                }
                 REMOVE BOX(s);
                 MOVE PROPERTY(deleteScan) { alignment = STRETCH; }
             }
@@ -91,6 +94,7 @@ DESIGN receiptPackage {
 
 selectPackage 'Выбрать' (Package p) {
     SEEK receiptPackage.p = p;
+    ACTIVATE TAB receiptPackage.packageContent;
 }
 
 EXTEND FORM receiptPackage

@@ -10,6 +10,7 @@ receipt = DATA Receipt (ReceiptScan) NONULL DELETE INDEXED;
 countScan 'Просканировано' (Receipt r) = GROUP SUM 1 IF receipt(ReceiptScan s) = r MATERIALIZED;
 
 user = DATA CustomUser (ReceiptScan);
+nameUser 'Пользователь' (ReceiptScan s) = name(user(s));
 user(ReceiptScan s) <- currentUser() WHEN SET(s IS ReceiptScan);
 
 dateTime 'Время' = DATA DATETIME (ReceiptScan);
