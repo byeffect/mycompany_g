@@ -1,6 +1,6 @@
 MODULE ReceiptPackageMobile;
 
-REQUIRE ReceiptDone, ReceiptPackage, PackageLot, ReceiptScan, Mobile, Icon;
+REQUIRE ReceiptDone, ReceiptPackage, ReceiptLot, PackageLot, ReceiptScan, Mobile, Icon;
 
 NAMESPACE Inventory;
 
@@ -9,6 +9,8 @@ readonlyReceipt = DATA LOCAL BOOLEAN ();
 htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + number(r) + '</b>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameVendor(r) + '</font>');
 
 htmlReceipt '' (PackageLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + idLot(l) + '</font>') + '</div>');
+
+htmlReceipt '' (Lot l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + id(l) + '</font>') + '</div>');
 
 htmlReceipt '' (ReceiptScan l) = HTML ('<div>' + (CONCAT '&nbsp;',
     time(l),
@@ -20,7 +22,7 @@ htmlReceipt '' (ReceiptScan l) = HTML ('<div>' + (CONCAT '&nbsp;',
 
 
 // Форма приемки
-FORM receiptPackage
+FORM receiptMobile
     OBJECTS r = Receipt PANEL
     PROPERTIES(r) READONLY htmlReceipt
 
@@ -43,10 +45,14 @@ FORM receiptPackage
     OBJECTS pl = PackageLine
     PROPERTIES(pl) READONLY htmlReceipt BACKGROUND RGB(212,255,212) IF scan(r, lot(pl))
     FILTERS package(pl) = p
+    
+    OBJECTS lt = (rl = ReceiptLine, lt = Lot)
+    PROPERTIES(lt) READONLY htmlReceipt BACKGROUND RGB(212,255,212) IF scan(r, lt)
+    FILTERS receipt(rl) = r, initialDemand(rl, lt) 
 ;
 
-DESIGN receiptPackage {
-    caption = badged('Приемка', number(r));
+DESIGN receiptMobile {
+    caption = badged('', number(r));
     OBJECTS {
         class = '';
         MOVE PROPERTY(htmlReceipt(r)) {
@@ -74,14 +80,21 @@ DESIGN receiptPackage {
                 MOVE PROPERTY(deleteScan) { alignment = STRETCH; }
             }
             NEW packageContent {
-                caption = badged('Содержимое', countLines(p));
+                showIf = countPackages(r);
+                caption = badged('В коробе', countLines(p));
                 MOVE GRID(pl);
                 REMOVE BOX(pl);
             }
             NEW packages {
+                showIf = countPackages(r);
                 caption = badged('Упаковки', countPackages(r));
                 MOVE GRID(pc);
                 REMOVE BOX(pc);
+            }
+            NEW receiptContent {
+                caption = badged('Содержимое', initialDemandLot(r));
+                MOVE GRID(lt);
+                REMOVE BOX(lt);
             }
         }
         MOVE PROPERTY(nameLocation(s)) {
@@ -93,14 +106,14 @@ DESIGN receiptPackage {
 }
 
 selectPackage 'Выбрать' (Package p) {
-    SEEK receiptPackage.p = p;
-    ACTIVATE TAB receiptPackage.packageContent;
+    SEEK receiptMobile.p = p;
+    ACTIVATE TAB receiptMobile.packageContent;
 }
 
-EXTEND FORM receiptPackage
+EXTEND FORM receiptMobile
     PROPERTIES(pc) selectPackage
 ;
-DESIGN receiptPackage {
+DESIGN receiptMobile {
     packages {
         MOVE PROPERTY(selectPackage(pc)) { alignment = STRETCH; }
     }
@@ -111,9 +124,9 @@ barcode = DATA LOCAL STRING () CHANGEKEY 'F4';
 scanBarcode(Receipt r, Package p, ReceiptScan rs) {
     INPUT b = STRING DO {
         IF packageReference(r, b) THEN {
-            SEEK receiptPackage.p = packageReference(r, b);
+            SEEK receiptMobile.p = packageReference(r, b);
         } ELSE {
-            IF NOT p THEN
+            IF countPackages(r) AND NOT p THEN
                 MESSAGE 'Не выбрана упаковка. Сначала просканируйте ее.';
             ELSE {
                 IF NOT lot(b) THEN {
@@ -125,17 +138,20 @@ scanBarcode(Receipt r, Package p, ReceiptScan rs) {
                     IF scan(r, lot(b)) THEN
                         MESSAGE 'Код партии уже был принят';
                     ELSE {
-                        IF NOT GROUP SUM 1 IF package(PackageLine pl) = p AND lot(pl) = lot(b) THEN
+                        IF countPackages(r) AND NOT GROUP SUM 1 IF package(PackageLine pl) = p AND lot(pl) = lot(b) THEN
                             MESSAGE 'Этой партии не должно быть в текущей упаковке';
                         ELSE {
-                            NEWSESSION APPLY {
-                                NEW s = ReceiptScan {
-                                    receipt(s) <- r;
-                                    package(s) <- p;
-                                    lot(s) <- lot(b);
-                                    SEEK receiptPackage.s = s;
+                            IF NOT countPackages(r) AND NOT GROUP SUM 1 IF initialDemand(ReceiptLine l, lot(b)) AND receipt(l) = r THEN
+                                MESSAGE 'Этой партии не должно быть в текущей приемке';
+                            ELSE
+                                NEWSESSION APPLY {
+                                    NEW s = ReceiptScan {
+                                        receipt(s) <- r;
+                                        package(s) <- p;
+                                        lot(s) <- lot(b);
+                                        SEEK receiptMobile.s = s;
+                                    }
                                 }
-                            }
                         }
                     }
                 }
@@ -144,10 +160,10 @@ scanBarcode(Receipt r, Package p, ReceiptScan rs) {
     }
 }
 
-EXTEND FORM receiptPackage
+EXTEND FORM receiptMobile
     PROPERTIES() barcode ON CHANGE scanBarcode(r, p, s) SHOWIF NOT readonlyReceipt()
 ;
-DESIGN receiptPackage {
+DESIGN receiptMobile {
     OBJECTS {
         MOVE PROPERTY(barcode()) AFTER PROPERTY(htmlReceipt(r)) {
             caption = '';

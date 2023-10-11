@@ -5,7 +5,7 @@ REQUIRE ReceiptPackageMobile, ReceiptPutAwayLot;
 NAMESPACE Inventory;
 
 receive 'Принять' (Receipt r) {
-    SHOW receiptPackage OBJECTS r = r DOCKED NOWAIT;
+    SHOW receiptMobile OBJECTS r = r DOCKED NOWAIT;
 } CHANGEMOUSE 'DBLCLK';
 
 markAsDone 'Завершить' (Receipt r) {
@@ -30,7 +30,7 @@ markAsDone 'Завершить' (Receipt r) {
 open 'Открыть' (Receipt r) {
     NEWSESSION {
         readonlyReceipt() <- TRUE;
-        SHOW receiptPackage OBJECTS r = r DOCKED NOWAIT;
+        SHOW receiptMobile OBJECTS r = r DOCKED NOWAIT;
     }
 } CHANGEMOUSE 'DBLCLK';
 return 'Вернуть' (Receipt r) {
@@ -104,6 +104,32 @@ DESIGN receiptDashboard {
 NAVIGATOR {
     dashboards {
         NEW receiptDashboard;
+    }
+}
+
+scanBarcodeDashboard() {
+    INPUT b = STRING DO
+        IF NOT GROUP SUM 1 IF vendorReference(Receipt r) = b AND NOT done(r) THEN
+            MESSAGE 'Не найдено указанного номера приемки';
+        ELSE {
+            FOR Receipt r = (GROUP MAX Receipt rr IF vendorReference(rr) = b AND NOT done(rr)) DO {
+                NEWSESSION APPLY { ready(r) <- TRUE; }
+                SEEK receiptDashboard.rr = r;
+            }
+        }
+}
+
+EXTEND FORM receiptDashboard
+    PROPERTIES() barcode ON CHANGE scanBarcodeDashboard()
+;
+
+DESIGN receiptDashboard {
+    OBJECTS {
+        MOVE PROPERTY(barcode()) FIRST {
+            caption = '';
+            placeholder = 'Введите номер поставки';
+            alignment = STRETCH;
+        }
     }
 }
 
