@@ -6,7 +6,7 @@ NAMESPACE Inventory;
 
 readonlyReceipt = DATA LOCAL BOOLEAN ();
 
-htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + number(r) + '</b>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameVendor(r) + '</font>');
+htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + vendorReference(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameVendor(r) + '</font>');
 
 htmlReceipt '' (PackageLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + idLot(l) + '</font>') + '</div>');
 
