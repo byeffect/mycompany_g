@@ -92,7 +92,7 @@ DESIGN receiptMobile {
                 REMOVE BOX(pc);
             }
             NEW receiptContent {
-                caption = badged('Содержимое', initialDemandLot(r));
+                caption = badged('Содержимое', INTEGER(initialDemandLot(r)));
                 MOVE GRID(lt);
                 REMOVE BOX(lt);
             }

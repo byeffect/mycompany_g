@@ -1,6 +1,6 @@
 MODULE SupplierImportGsheets;
 
-REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot;
+REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot;
 
 NAMESPACE Inventory;
 
@@ -53,14 +53,13 @@ dateBox = DATA LOCAL STRING (INTEGER);
 
 line (Receipt r, Product p) = GROUP MAX ReceiptLine l BY receipt(l), product(l);
 packageLineLot (Package p, Lot lot) = GROUP MAX PackageLine l BY package(l), lot(l);
+receiptVendor(STRING reference) = GROUP MAX Receipt r IF vendorReference(r) = reference AND NOT done(r);
 
 idImportSupplier'ID таблицы импорта поставщиков' = DATA STRING ();
-//'1ubpszOqjXkVNpDYgK8s3G9G6W9TmzP4pJZ5oR8la0YA'
+
 importSupplier2 'Импорт данных поставщика 2'(){
     NEWSESSION {
-        LOCAL serviceAccountGoogle = ServiceGoogleAccount();
-        serviceAccountGoogle() <- GROUP MAX ServiceGoogleAccount s IF clientEmail(s) = 'lsfusion-gsheets@ace-ensign-380611.iam.gserviceaccount.com';
-        getValuesRange(idImportSupplier(), 'Поставщик 2!A3:F', serviceAccountGoogle());
+        getValuesRange(idImportSupplier(), 'Поставщик 2!A3:F', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
         LOCAL str = STRING();
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
@@ -78,31 +77,24 @@ importSupplier2 'Импорт данных поставщика 2'(){
         }
 
         //создание приемок
-        FOR [GROUP MAX INTEGER i BY dateBox(i)](STRING date) AND NOT receipt(date) NEW r = Receipt DO{
-            number(r) <- date;
+        FOR [GROUP MAX INTEGER i BY box(i)](STRING box) AND NOT receiptVendor(box) NEW r = Receipt DO{
+            vendorReference(r) <- box;
             type(r) <- receiptType('receipt');
         }
 
         //создание строк приемки
-        FOR INTEGER x = [GROUP MAX INTEGER i BY model(i), dateBox(i)](STRING model, STRING date) AND Receipt r = receipt(date) AND Product p = productModel(model) AND NOT line(r, p) NEW l = ReceiptLine DO{
+        FOR INTEGER x = [GROUP MAX INTEGER i BY model(i), box(i)](STRING model, STRING box) AND Receipt r = receiptVendor(box) AND Product p = productModel(model) AND NOT line(r, p) NEW l = ReceiptLine DO{
             product(l) <- p;
             receipt(l) <- r;
         }
-
-        //создание коробок
-        FOR INTEGER x = [GROUP MAX INTEGER i BY box(i)](STRING box) AND Receipt r = receipt(dateBox(x)) AND NOT packageReference(r, box) NEW p = Package DO{
-            reference(p) <- box;
-            in(r, p) <- TRUE;
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Receipt r = receiptVendor(box(x)) AND Lot lot = lot(imei) AND ReceiptLine l = line(r, product(lot)) DO{
+            initialDemand(l, lot) <- 1;
         }
 
-        //создание строк коробок
-        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)] (STRING imei) AND Receipt r = receipt(dateBox(x))
-            AND Package p = packageReference(r, box(x)) AND Lot l = lot(imei) AND NOT packageLineLot(p, l) NEW pl = PackageLine
-            DO{
-            package(pl) <- p;
-            product(pl) <- product(l);
-            lot(pl) <- l;
+        FOR INTEGER x = [GROUP MAX INTEGER i BY model(i), box(i)](STRING model, STRING box) AND Receipt r = receiptVendor(box) AND Product p = productModel(model) AND ReceiptLine l = line(r, p)  DO{
+            initialDemand(l) <- GROUP SUM 1 IF initialDemand(l, Lot lot);
         }
+        
         APPLY;
     }
 }
@@ -126,3 +118,31 @@ DESIGN integrationData{
     }
 }
 
+
+//импорт размещений
+importLocation(){
+    NEWSESSION {
+        LOCAL id = STRING(INTEGER);
+        LOCAL type = STRING(INTEGER);
+        LOCAL address = STRING(INTEGER);
+        LOCAL name = STRING(INTEGER);
+
+        getValuesRange(idImportItemsGsheets(), 'SKU!A3:D', defaultAccount());
+        valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+        LOCAL str = STRING();
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+        IMPORT CSV ',' NOHEADER FROM resultFile() TO id, type, address, name;
+
+        FOR INTEGER x = [GROUP MAX INTEGER i BY address(i)](STRING[100] id) AND NOT location(id) AND Product p = productModel(id(x)) NEW l = Location DO{
+            id(l) <- id;
+        }
+        
+        FOR INTEGER x = [GROUP MAX INTEGER i BY address(i)](STRING[100] id) AND Location l = location(id) AND Product p = productModel(id(x)) DO{
+            name(l) <- id;
+            location(l, p) <- l;
+        }
+        APPLY;
+    }
+ 
+}
