@@ -53,7 +53,7 @@ FORM receiptDashboard 'Приемка'
     FILTERS status(rr) = ReceiptStatus.ready
     
     OBJECTS rd = Receipt
-    PROPERTIES(rd) READONLY htmlReceipt
+    PROPERTIES(rd) READONLY htmlReceipt, initialDemand, quantityScan
     PROPERTIES(rd) open, return
     FILTERS status(rd) = ReceiptStatus.done OR status(rd) = ReceiptStatus.putAway
     FILTERGROUP lastDays
