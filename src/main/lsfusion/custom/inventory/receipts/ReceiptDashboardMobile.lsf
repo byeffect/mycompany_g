@@ -119,6 +119,7 @@ scanBarcodeDashboard() {
         }
 }
 
+barcode = DATA LOCAL STRING () CHANGEKEY 'SPACE';
 EXTEND FORM receiptDashboard
     PROPERTIES() barcode ON CHANGE scanBarcodeDashboard()
 ;

@@ -128,52 +128,52 @@ DESIGN receiptMobile {
 }
 
 // scan
-barcode = DATA LOCAL STRING () CHANGEKEY 'SPACE';
+barcodeNumeric = DATA LOCAL NUMERIC () CHANGEKEY 'SPACE';
 scanBarcode(Receipt r, Package p, ReceiptScan rs) {
-    INPUT b = STRING DO {
-        IF packageReference(r, b) THEN {
-            SEEK receiptMobile.p = packageReference(r, b);
-        } ELSE {
-            IF countPackages(r) AND NOT p THEN
-                MESSAGE 'Не выбрана упаковка. Сначала просканируйте ее.';
-            ELSE {
-                IF NOT lot(b) THEN {
-                    IF NOT location(b) OR NOT rs THEN
-                        MESSAGE 'Не найден код партии';
-                    ELSE
-                        NEWSESSION APPLY { location(rs) <- location(b); }
-                } ELSE {
-                    IF scan(r, lot(b)) THEN
-                        MESSAGE 'Код партии уже был принят';
-                    ELSE {
-                        IF countPackages(r) AND NOT GROUP SUM 1 IF package(PackageLine pl) = p AND lot(pl) = lot(b) THEN
-                            MESSAGE 'Этой партии не должно быть в текущей упаковке';
+    INPUT bn = NUMERIC DO
+        FOR STRING b = STRING(bn) DO 
+            IF packageReference(r, b) THEN {
+                SEEK receiptMobile.p = packageReference(r, b);
+            } ELSE {
+                IF countPackages(r) AND NOT p THEN
+                    MESSAGE 'Не выбрана упаковка. Сначала просканируйте ее.';
+                ELSE {
+                    IF NOT lot(b) THEN {
+                        IF NOT location(b) OR NOT rs THEN
+                            MESSAGE 'Не найден код партии';
+                        ELSE
+                            NEWSESSION APPLY { location(rs) <- location(b); }
+                    } ELSE {
+                        IF scan(r, lot(b)) THEN
+                            MESSAGE 'Код партии уже был принят';
                         ELSE {
-                            IF NOT countPackages(r) AND NOT GROUP SUM 1 IF initialDemand(ReceiptLine l, lot(b)) AND receipt(l) = r THEN
-                                MESSAGE 'Этой партии не должно быть в текущей приемке';
-                            ELSE
-                                NEWSESSION APPLY {
-                                    NEW s = ReceiptScan {
-                                        receipt(s) <- r;
-                                        package(s) <- p;
-                                        lot(s) <- lot(b);
-                                        SEEK receiptMobile.s = s;
+                            IF countPackages(r) AND NOT GROUP SUM 1 IF package(PackageLine pl) = p AND lot(pl) = lot(b) THEN
+                                MESSAGE 'Этой партии не должно быть в текущей упаковке';
+                            ELSE {
+                                IF NOT countPackages(r) AND NOT GROUP SUM 1 IF initialDemand(ReceiptLine l, lot(b)) AND receipt(l) = r THEN
+                                    MESSAGE 'Этой партии не должно быть в текущей приемке';
+                                ELSE
+                                    NEWSESSION APPLY {
+                                        NEW s = ReceiptScan {
+                                            receipt(s) <- r;
+                                            package(s) <- p;
+                                            lot(s) <- lot(b);
+                                            SEEK receiptMobile.s = s;
+                                        }
                                     }
-                                }
+                            }
                         }
                     }
                 }
             }
-        }
-    }
 }
 
 EXTEND FORM receiptMobile
-    PROPERTIES() barcode ON CHANGE scanBarcode(r, p, s) SHOWIF NOT readonlyReceipt()
+    PROPERTIES() barcodeNumeric ON CHANGE scanBarcode(r, p, s) SHOWIF NOT readonlyReceipt()
 ;
 DESIGN receiptMobile {
     OBJECTS {
-        MOVE PROPERTY(barcode()) AFTER PROPERTY(htmlReceipt(r)) {
+        MOVE PROPERTY(barcodeNumeric()) AFTER PROPERTY(htmlReceipt(r)) {
             caption = '';
             placeholder = 'Введите штрих-код';
             alignment = STRETCH;
