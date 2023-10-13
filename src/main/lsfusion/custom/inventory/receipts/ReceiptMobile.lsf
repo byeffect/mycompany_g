@@ -128,7 +128,7 @@ DESIGN receiptMobile {
 }
 
 // scan
-barcode = DATA LOCAL STRING () CHANGEKEY 'F4';
+barcode = DATA LOCAL STRING () CHANGEKEY 'SPACE';
 scanBarcode(Receipt r, Package p, ReceiptScan rs) {
     INPUT b = STRING DO {
         IF packageReference(r, b) THEN {
