@@ -1,0 +1,6 @@
+MODULE InventoryCustom;
+
+NAMESPACE Inventory;
+
+barcode = DATA LOCAL STRING () CHANGEKEY 'SPACE';
+barcodeNumeric = DATA LOCAL NUMERIC () CHANGEKEY 'SPACE';

@@ -1,0 +1,118 @@
+MODULE ShipmentMobile;
+
+REQUIRE ShipmentDone, ShipmentLot, PackageLot, ShipmentScan, LocationProduct, InventoryCustom, Mobile, Icon;
+
+NAMESPACE Inventory;
+
+readonlyShipment = DATA LOCAL BOOLEAN ();
+
+htmlShipment '' (Shipment r) = HTML (CONCAT '&nbsp;', '<b>' + customerReference(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameCustomer(r) + '</font>');
+
+htmlShipment '' (ShipmentLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<i>' + nameLocation(location(l), product(l)) + '</i>', '<font size="-2">(' + locations(location(l), product(l)) + ')</font>') + '</div>');
+
+htmlShipment '' (ShipmentScan l) = HTML ('<div>' + (CONCAT '&nbsp;',
+    time(l),
+    nameUser(l),
+    '<b>' + nameProduct(l) + '</b>',
+    '<font size="-2">' + idLot(l) + '</font>',
+    '<u>' + nameLocation(l) + '</u>') + '</div>');
+
+notShippedOn 'Не отгруженые' = DATA LOCAL NESTED BOOLEAN ();
+
+// Форма отгрузки
+FORM shipmentMobile
+    OBJECTS s = Shipment PANEL
+    PROPERTIES(s) READONLY htmlShipment
+
+    OBJECTS ss = ShipmentScan
+    PROPERTIES(ss) READONLY htmlShipment
+    PROPERTIES(ss) READONLY nameLocation PANEL
+    PROPERTIES(ss) NEWSESSION deleteScan = DELETE SHOWIF NOT readonlyShipment()
+    FILTERS shipment(ss) = s
+
+    OBJECTS sl = ShipmentLine
+    PROPERTIES(sl) READONLY BACKGROUND IF initialDemand(sl) = quantityScan(sl) THEN RGB(212,255,212) ELSE
+                                       IF quantityScan(sl) THEN RGB(255,255,212) 
+                            htmlShipment, initialDemand, quantityScan
+    FILTERS shipment(sl) = s
+    
+    PROPERTIES notShippedOn()
+    FILTERS NOT initialDemand(sl) = quantityScan(sl) OR NOT notShippedOn()
+;
+
+DESIGN shipmentMobile {
+    caption = badged('', number(s));
+    OBJECTS {
+        class = '';
+        MOVE PROPERTY(htmlShipment(s)) {
+            caption = '';
+            alignment = STRETCH;
+            focusable = FALSE;
+        }
+        REMOVE BOX(s);
+
+        NEW pane {
+            fill = 1;
+            tabbed = TRUE;
+            NEW scans {
+                caption = badged('Отгружено', countScan(s));
+                MOVE GRID(ss) {
+                    PROPERTY(htmlShipment(s)) { valueClass = 'myclass'; }
+                }
+                REMOVE BOX(ss);
+                MOVE PROPERTY(deleteScan) { alignment = STRETCH; }
+            }
+            NEW shipmentContent {
+                caption = badged('Содержимое', INTEGER(initialDemand(s)));
+                MOVE PROPERTY(notShippedOn());
+                MOVE GRID(sl);
+                REMOVE BOX(sl);
+            }
+        }
+        MOVE PROPERTY(nameLocation(ss)) {
+            caption = 'Место хранения';
+            focusable = FALSE;
+        }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+// scan
+scanBarcode(Shipment s, ShipmentScan ss) {
+    INPUT bn = NUMERIC DO
+        FOR STRING b = STRING(bn) DO 
+            IF NOT lot(b) THEN {
+                IF NOT location(b) OR NOT ss THEN
+                    MESSAGE 'Не найден код партии';
+                ELSE
+                    NEWSESSION APPLY { location(ss) <- location(b); }
+            } ELSE {
+                IF scan(s, lot(b)) THEN
+                    MESSAGE 'Код партии уже был отгружен';
+                ELSE {
+                    IF NOT GROUP SUM 1 IF initialDemand(ShipmentLine l) AND product(l) = product(lot(b)) AND shipment(l) = s THEN
+                        MESSAGE 'Этого товара не должно быть в текущей отгрузке';
+                    ELSE
+                        NEWSESSION APPLY {
+                            NEW ls = ShipmentScan {
+                                shipment(ls) <- s;
+                                lot(ls) <- lot(b);
+                                SEEK shipmentMobile.ss = ls;
+                            }
+                        }
+                }
+            }
+}
+
+EXTEND FORM shipmentMobile
+    PROPERTIES() barcodeNumeric ON CHANGE scanBarcode(s, ss) SHOWIF NOT readonlyShipment()
+;
+DESIGN shipmentMobile {
+    OBJECTS {
+        MOVE PROPERTY(barcodeNumeric()) AFTER PROPERTY(htmlShipment(s)) {
+            caption = '';
+            placeholder = 'Введите штрих-код';
+            alignment = STRETCH;
+        }
+    }
+}

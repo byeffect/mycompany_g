@@ -23,7 +23,8 @@ REQUIRE Eval, ProcessMonitor, Backup,
         InvLedger, InvLedgerItem, InvLedgerLot,
         InventoryReport, InventoryValuation, ProductMoves, InventoryReportLot,
     
-        ReceiptDashboardMobile, SupplierImportGsheets;
+        ReceiptDashboardMobile, SupplierImportGsheets,
+        ShipmentDashboardMobile;
 
 //EXTEND CLASS Theme {
 //    sketchy 'Sketchy',

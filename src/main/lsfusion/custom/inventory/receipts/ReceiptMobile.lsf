@@ -1,6 +1,6 @@
-MODULE ReceiptPackageMobile;
+MODULE ReceiptMobile;
 
-REQUIRE ReceiptDone, ReceiptPackage, ReceiptLot, PackageLot, ReceiptScan, Mobile, Icon;
+REQUIRE ReceiptDone, ReceiptPackage, ReceiptLot, PackageLot, ReceiptScan, InventoryCustom, Mobile, Icon;
 
 NAMESPACE Inventory;
 
@@ -128,7 +128,6 @@ DESIGN receiptMobile {
 }
 
 // scan
-barcodeNumeric = DATA LOCAL NUMERIC () CHANGEKEY 'SPACE';
 scanBarcode(Receipt r, Package p, ReceiptScan rs) {
     INPUT bn = NUMERIC DO
         FOR STRING b = STRING(bn) DO 

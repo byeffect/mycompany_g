@@ -1,0 +1,128 @@
+MODULE ShipmentDashboardMobile;
+
+REQUIRE ShipmentMobile, ShipmentPickingLot;
+
+NAMESPACE Inventory;
+
+ship 'Отгрузить' (Shipment r) {
+    SHOW shipmentMobile OBJECTS s = r DOCKED NOWAIT;
+} CHANGEMOUSE 'DBLCLK';
+
+markAsDone 'Завершить' (Shipment s) {
+    NEWSESSION { 
+        done(s) <- TRUE;
+        done(ShipmentLine l) <- quantityScan(l) WHERE shipment(l) = s;
+        done(ShipmentLine l, Lot lt) <- quantityScan(s, lt) IF product(l) = product(lt) WHERE shipment(l) = s;
+        quantity(ShipmentLine l, Location ll, Lot lt) <- quantityScan(s, lt, ll) IF product(l) = product(lt) WHERE shipment(l) = s;
+        
+        APPLY;
+    }
+} CONFIRM;
+
+open 'Открыть' (Shipment r) {
+    NEWSESSION {
+        readonlyShipment() <- TRUE;
+        SHOW shipmentMobile OBJECTS s = r DOCKED NOWAIT;
+    }
+} CHANGEMOUSE 'DBLCLK';
+return 'Вернуть' (Shipment s) {
+    NEWSESSION { 
+        done(s) <- NULL;
+        done(ShipmentLine l) <- NULL WHERE shipment(l) = s;
+        done(ShipmentLine l, Lot lt) <- NULL WHERE shipment(l) = s;
+        quantity(ShipmentLine l, Location ll, Lot lt) <- NULL WHERE shipment(l) = s;
+        APPLY;
+    }
+} CONFIRM;
+
+FORM shipmentDashboard 'Отгрузка'
+    OBJECTS ss = Shipment
+    PROPERTIES(ss) READONLY BACKGROUND IF initialDemand(ss) = quantityScan(ss) THEN RGB(212,255,212) ELSE
+                                       IF quantityScan(ss) THEN RGB(255,255,212)
+                            htmlShipment, initialDemand, quantityScan
+    PROPERTIES(ss) ship, markAsDone
+    FILTERS status(ss) = ShipmentStatus.ready
+    
+    OBJECTS sd = Shipment
+    PROPERTIES(sd) READONLY htmlShipment, initialDemand, quantityScan
+    PROPERTIES(sd) open, return
+    FILTERS status(sd) = ShipmentStatus.done
+    FILTERGROUP lastDays
+        FILTER 'Последние' executionDate(sd) >= subtract(currentDate(), 1)
+;
+
+countShipmentReady = GROUP SUM 1 IF status(Shipment rr) = ShipmentStatus.ready;
+
+DESIGN shipmentDashboard {
+    OBJECTS {
+        class = '';
+        NEW pane {
+            fill = 1;
+            tabbed = TRUE;
+            NEW ready {
+                caption = badged('В работе', countShipmentReady());
+                MOVE GRID(ss) {
+                    PROPERTY(htmlShipment(ss)) { caption = ''; }
+                    PROPERTY(initialDemand(ss)) { charWidth = 4; }
+                    PROPERTY(quantityScan(ss)) { charWidth = 4; }
+                }
+                NEW readyActions {
+                    alignment = STRETCH;
+                    horizontal = TRUE;
+                    MOVE PROPERTY(ship(ss)) { fill = 2; }
+                    MOVE PROPERTY(markAsDone(ss)) { fill = 1; }
+                }
+                REMOVE BOX(ss);
+            }
+            NEW done {
+                caption = 'Отгруженые';
+                MOVE GRID(sd) {
+                    PROPERTY(htmlShipment(sd)) { caption = ''; }
+                }
+                NEW doneActions {
+                    alignment = STRETCH;
+                    horizontal = TRUE;
+                    MOVE PROPERTY(open(sd)) { fill = 2; }
+                    MOVE PROPERTY(return(sd)) { fill = 1; }
+                }
+                REMOVE BOX(sd);
+            }
+        }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+NAVIGATOR {
+    dashboards {
+        NEW shipmentDashboard;
+    }
+}
+
+EXTEND FORM shipmentDashboard
+    PROPERTIES() barcode ON CHANGE {
+        INPUT b = STRING DO
+            IF NOT GROUP SUM 1 IF number(Shipment r) = b AND NOT done(r) THEN
+                MESSAGE 'Не найдено указанного номера отгрузки';
+            ELSE {
+                FOR Shipment r = (GROUP MAX Shipment sh IF number(sh) = b AND NOT done(sh)) DO {
+                    NEWSESSION APPLY { ready(r) <- TRUE; }
+                    SEEK shipmentDashboard.ss = r;
+                }
+            }
+    }
+;
+
+DESIGN shipmentDashboard {
+    OBJECTS {
+        MOVE PROPERTY(barcode()) FIRST {
+            caption = '';
+            placeholder = 'Введите номер поставки';
+            alignment = STRETCH;
+        }
+    }
+}
+
+showMobileForms() + {
+    IF permit(currentUser(), navigatorElementCanonicalName('Inventory.shipmentDashboard')) THEN
+        SHOW shipmentDashboard NOWAIT;
+}

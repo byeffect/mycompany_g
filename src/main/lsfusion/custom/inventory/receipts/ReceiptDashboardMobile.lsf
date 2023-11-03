@@ -1,6 +1,6 @@
 MODULE ReceiptDashboardMobile;
 
-REQUIRE ReceiptPackageMobile, ReceiptPutAwayLot;
+REQUIRE ReceiptMobile, ReceiptPutAwayLot;
 
 NAMESPACE Inventory;
 
@@ -60,7 +60,7 @@ FORM receiptDashboard 'Приемка'
         FILTER 'Последние' executionDate(rd) >= subtract(currentDate(), 1)
 ;
 
-countReady = GROUP SUM 1 IF status(Receipt rr) = ReceiptStatus.ready;
+countReceiptReady = GROUP SUM 1 IF status(Receipt rr) = ReceiptStatus.ready;
 
 DESIGN receiptDashboard {
     OBJECTS {
@@ -69,7 +69,7 @@ DESIGN receiptDashboard {
             fill = 1;
             tabbed = TRUE;
             NEW ready {
-                caption = badged('В работе', countReady());
+                caption = badged('В работе', countReceiptReady());
                 MOVE GRID(rr) {
                     PROPERTY(htmlReceipt(rr)) { caption = ''; }
                     PROPERTY(initialDemand(rr)) { charWidth = 4; }
@@ -107,21 +107,18 @@ NAVIGATOR {
     }
 }
 
-scanBarcodeDashboard() {
-    INPUT b = STRING DO
-        IF NOT GROUP SUM 1 IF vendorReference(Receipt r) = b AND NOT done(r) THEN
-            MESSAGE 'Не найдено указанного номера приемки';
-        ELSE {
-            FOR Receipt r = (GROUP MAX Receipt rr IF vendorReference(rr) = b AND NOT done(rr)) DO {
-                NEWSESSION APPLY { ready(r) <- TRUE; }
-                SEEK receiptDashboard.rr = r;
-            }
-        }
-}
-
-barcode = DATA LOCAL STRING () CHANGEKEY 'SPACE';
 EXTEND FORM receiptDashboard
-    PROPERTIES() barcode ON CHANGE scanBarcodeDashboard()
+    PROPERTIES() barcode ON CHANGE {
+        INPUT b = STRING DO
+            IF NOT GROUP SUM 1 IF vendorReference(Receipt r) = b AND NOT done(r) THEN
+                MESSAGE 'Не найдено указанного номера приемки';
+            ELSE {
+                FOR Receipt r = (GROUP MAX Receipt rc IF vendorReference(rc) = b AND NOT done(rc)) DO {
+                    NEWSESSION APPLY { ready(r) <- TRUE; }
+                    SEEK receiptDashboard.rr = r;
+                }
+            }
+    }
 ;
 
 DESIGN receiptDashboard {

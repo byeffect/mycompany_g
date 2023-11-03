@@ -1,0 +1,47 @@
+MODULE ShipmentScan;
+
+REQUIRE Shipment, InvLedgerLot, Location;
+
+NAMESPACE Inventory;
+
+CLASS ShipmentScan 'Сканирование на отгрузке';
+shipment = DATA Shipment (ShipmentScan) NONULL DELETE INDEXED;
+
+countScan 'Просканировано' (Shipment r) = GROUP SUM 1 IF shipment(ShipmentScan s) = r MATERIALIZED;
+
+user = DATA CustomUser (ShipmentScan);
+nameUser 'Пользователь' (ShipmentScan s) = name(user(s));
+user(ShipmentScan s) <- currentUser() WHEN SET(s IS ShipmentScan);
+
+dateTime 'Время' = DATA DATETIME (ShipmentScan);
+dateTime(ShipmentScan s) <- currentDateTime() WHEN SET(s IS ShipmentScan);
+time 'Время' (ShipmentScan s) = TIME(dateTime(s));
+
+lot = DATA Lot (ShipmentScan);
+idLot (ShipmentScan l) = id(lot(l));
+INDEX lot(ShipmentScan s), shipment(s);
+
+product (ShipmentScan l) = product(lot(l));
+nameProduct (ShipmentScan l) = nameProduct(lot(l));
+
+location = DATA Location (ShipmentScan);
+idLocation (ShipmentScan l) = id(location(l));
+nameLocation (ShipmentScan l) = name(location(l));
+INDEX location(ShipmentScan s), shipment(s), lot(s);
+
+WHEN LOCAL SETCHANGED(lot(ShipmentScan s)) AND prevMinLocationOnHand(lot(s)) DO 
+    location(s) <- prevMinLocationOnHand(lot(s));
+
+quantity '{Quantity}' = DATA NUMERIC[16,3] (ShipmentScan);
+quantity(ShipmentScan r) <- 1 WHEN SET(r IS ShipmentScan);
+
+scan (Shipment r, Lot l) = GROUP MAX ShipmentScan rs IF shipment(rs) = r AND lot(rs) = l;
+
+quantityScan 'Отгружено' (Shipment r) = GROUP SUM quantity(ShipmentScan s) IF shipment(s) = r MATERIALIZED;
+
+quantityScan (Shipment r, Product p) = GROUP SUM quantity(ShipmentScan s) IF shipment(s) = r AND product(s) = p;
+quantityScan 'Отгружено' (ShipmentLine l) = quantityScan(shipment(l), product(l));
+
+quantityScan (Shipment r, Product p, Location l) = GROUP SUM quantity(ShipmentScan s) IF shipment(s) = r AND product(s) = p AND location(s) = l;
+quantityScan (Shipment r, Lot lt) = GROUP SUM quantity(ShipmentScan s) IF shipment(s) = r AND lot(s) = lt;
+quantityScan (Shipment r, Lot lt, Location l) = GROUP SUM quantity(ShipmentScan s) IF shipment(s) = r AND lot(s) = lt AND location(s) = l;
