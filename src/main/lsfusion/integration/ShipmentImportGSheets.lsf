@@ -1,0 +1,71 @@
+MODULE ShipmentImportGSheets;
+
+REQUIRE SupplierImportGsheets, ShipmentPickingLot;
+
+NAMESPACE Inventory;
+
+shipmentNumber(STRING number) = GROUP MAX Shipment s BY number(s);
+line (Shipment s, Product p) = GROUP MAX ShipmentLine l BY shipment(l), product(l);
+
+FBAPartner = DATA Partner ();
+nameFBAPartner 'Контрагент для отгрузок FBA' = name(FBAPartner());
+
+CONSTRAINT SETCHANGED (FBAPartner()) AND NOT isCustomer(FBAPartner()) 
+    MESSAGE 'Контрагент для отгрузок FBA должен быть покупателем';
+
+splitModel (STRING model) = CONCAT '-', getWord(model, '-', 1), getWord(model, '-', 2); 
+
+importFBA 'Импорт FBA'(){
+    NEWSESSION {
+        getValuesRange(idImportSupplier(), 'FBA PLAN!A3:F', defaultAccount());
+        valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+        LOCAL str = STRING();
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+        LOCAL package = STRING(INTEGER);
+        LOCAL date = DATE(INTEGER);
+        LOCAL sku = STRING(INTEGER);
+        LOCAL qty = STRING(INTEGER);
+        IMPORT CSV ',' NOHEADER FROM resultFile() TO package, date, sku, qty;
+        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND productModel(splitModel(sku(x))) AND NOT shipmentNumber(id) NEW s = Shipment DO{
+            number(s) <- id;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND Product p = productModel(splitModel(sku(x))) AND Shipment s = shipmentNumber(id) AND NOT done(s) DO{
+            customer(s) <- FBAPartner();
+            scheduledDateTime(s) <- DATETIME(date(x));
+            type(s) <- shipmentType('FBA');
+        }
+
+        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND Product p = productModel(splitModel(sku(x)))
+            AND Shipment s = shipmentNumber(id) AND NOT done(s) AND NOT line(s, p) NEW sl = ShipmentLine DO{
+
+            product(sl) <- p;
+            shipment(sl) <- s;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND Product p = productModel(splitModel(sku(x)))
+            AND Shipment s = shipmentNumber(id) AND NOT done(s) AND ShipmentLine sl = line(s, p) DO{
+
+            initialDemand(sl) <- NUMERIC[16,3](qty(x));
+        }
+        APPLY;
+    }
+}
+
+EXTEND FORM integrationData
+    PROPERTIES () nameFBAPartner, importFBA
+;
+DESIGN integrationData{
+    optionsImport{
+        MOVE PROPERTY (nameFBAPartner()) BEFORE actionImport;
+        actionImport{
+            MOVE PROPERTY (importFBA());
+        }
+    }
+}
+onStarted()+{
+    IF NOT shipmentType('FBA') THEN NEW s = ShipmentType{
+        id(s) <- 'FBA';
+        name(s) <- 'FBA';
+        defaultLocation(s) <- GROUP MAX Location l IF countChildren(l);
+    }
+}
