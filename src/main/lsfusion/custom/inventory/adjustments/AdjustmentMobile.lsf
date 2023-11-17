@@ -91,14 +91,23 @@ scanBarcode(Adjustment s, AdjustmentScan ss) {
     INPUT bn = NUMERIC DO
         FOR STRING b = STRING(bn) DO {
             IF NOT lot(b) THEN {
-                DIALOG selectProduct OBJECTS p INPUT DO
-                    IF p THEN NEWSESSION {
+                IF defaultProduct(location(s)) THEN {
+                    ASK 'Не найдена партия с кодом ' + b + '. Создать новую с товаром ' + name(defaultProduct(location(s))) + '?' DO NEWSESSION {
                         NEW l = Lot {
                             id(l) <- b;
-                            product(l) <- p;
+                            product(l) <- defaultProduct(location(s));
                             APPLY;
                         }
-                }
+                    } 
+                } ELSE
+                    DIALOG selectProduct OBJECTS p INPUT DO
+                        IF p THEN NEWSESSION {
+                            NEW l = Lot {
+                                id(l) <- b;
+                                product(l) <- p;
+                                APPLY;
+                            }
+                    }
             }
             IF lot(b) THEN {
                 IF scan(s, lot(b)) THEN
