@@ -1,0 +1,168 @@
+MODULE AdjustmentDashboardMobile;
+
+REQUIRE AdjustmentMobile, AdjustmentLot;
+
+NAMESPACE Inventory;
+
+edit 'Изменить' (Adjustment r) {
+    SHOW adjustmentMobile OBJECTS a = r DOCKED NOWAIT;
+} CHANGEMOUSE 'DBLCLK';
+
+markAsDone 'Завершить' (Adjustment a) {
+    NEWSESSION { 
+        done(a) <- TRUE;
+        FOR quantityScan(a, Product p) OR onHand(location(a), p) DO NEW al = AdjustmentLine {
+            adjustment(al) <- a;
+            product(al) <- p;
+            realQuantity(al) <- quantityScan(a, p); 
+            
+            realQuantity(al, Lot l) <- quantityScan(a, l) IF product(l) = p;
+        }
+        APPLY;
+    }
+} CONFIRM;
+
+stop 'Отменить' (Adjustment a) {
+    cancel(a);
+} CONFIRM;
+
+create 'Начать инвентаризацию' (Location l) {
+    NEWSESSION {
+        NEW a = Adjustment {
+            location(a) <- l;
+            type(a) <- AdjustmentType.all;
+            inProgress(a) <- TRUE;
+            APPLY;
+            
+            IF NOT canceled() THEN edit(a);
+        }
+    }
+}
+
+open 'Открыть' (Adjustment r) {
+    NEWSESSION {
+        readonlyAdjustment() <- TRUE;
+        SHOW adjustmentMobile OBJECTS a = r DOCKED NOWAIT;
+    }
+} CHANGEMOUSE 'DBLCLK';
+
+return 'Вернуть' (Adjustment a) {
+    NEWSESSION { 
+        done(a) <- NULL;
+        DELETE AdjustmentLine l WHERE adjustment(l) = a;
+        APPLY;
+    }
+} CONFIRM;
+
+FORM adjustmentDashboard 'Инвентаризация'
+    OBJECTS l = Location NULL PANEL
+    PROPERTIES(l) name SELECTOR
+    
+    OBJECTS ss = Adjustment
+    PROPERTIES(ss) READONLY BACKGROUND IF quantityScan(ss) THEN RGB(255,255,212)
+                            htmlAdjustment, quantityScan
+    PROPERTIES(l) create SHOWIF NOT ss
+    PROPERTIES(ss) edit, markAsDone, stop
+    FILTERS status(ss) = AdjustmentStatus.inProgress,
+            location(ss) = l OR NOT l
+    
+    OBJECTS sd = Adjustment
+    PROPERTIES(sd) READONLY htmlAdjustment, quantityScan
+    PROPERTIES(sd) open, return
+    FILTERS status(sd) = AdjustmentStatus.done,
+            location(sd) = l OR NOT l
+    
+    FILTERGROUP lastDays
+        FILTER 'Последние' date(sd) >= subtract(currentDate(), 1)
+    
+    OBJECTS p = Product
+    PROPERTIES(p)    READONLY name
+    PROPERTIES(l, p) READONLY onHand
+    ORDERS name(p)
+    FILTERS onHand(l, p)
+;
+
+countAdjustmentInProgress = GROUP SUM 1 IF status(Adjustment rr) = AdjustmentStatus.inProgress;
+
+DESIGN adjustmentDashboard {
+    OBJECTS {
+        class = '';
+        MOVE PROPERTY(name(l)) {
+            caption = 'Место хранения';
+            alignment = STRETCH;
+            focusable = FALSE;
+        }
+        NEW pane {
+            fill = 1;
+            tabbed = TRUE;
+            NEW ready {
+                caption = badged('В работе', countAdjustmentInProgress());
+                MOVE GRID(ss) {
+                    PROPERTY(htmlAdjustment(ss)) { caption = ''; }
+                    PROPERTY(quantityScan(ss)) { charWidth = 4; }
+                }
+                NEW readyActions {
+                    fill = 2;
+                    alignment = STRETCH;
+                    horizontal = TRUE;
+                    MOVE PROPERTY(create(l)) { fill = 1; }
+                    MOVE PROPERTY(edit(ss)) { fill = 2; }
+                    MOVE PROPERTY(markAsDone(ss)) { fill = 1; }
+                }
+                MOVE PROPERTY(stop(ss)) { alignment = STRETCH; }
+                REMOVE BOX(ss);
+            }
+            NEW done {
+                caption = 'Завершенные';
+                MOVE GRID(sd) {
+                    PROPERTY(htmlAdjustment(sd)) { caption = ''; }
+                }
+                NEW doneActions {
+                    alignment = STRETCH;
+                    horizontal = TRUE;
+                    MOVE PROPERTY(open(sd)) { fill = 2; }
+                    MOVE PROPERTY(return(sd)) { fill = 1; }
+                }
+                REMOVE BOX(sd);
+            }
+            NEW content {
+                showIf = l IS Location;
+                caption = badged('Содержимое', INTEGER(onHand(l)));
+                MOVE GRID(p);
+                REMOVE BOX(p);
+            }
+        }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+NAVIGATOR {
+    dashboards {
+        NEW adjustmentDashboard;
+    }
+}
+
+EXTEND FORM adjustmentDashboard
+    PROPERTIES() barcode ON CHANGE {
+        INPUT b = STRING DO
+            IF location(b) THEN
+                SEEK adjustmentDashboard.l = location(b);
+            ELSE
+                MESSAGE 'Не найдено указанного места хранения';
+    }
+;
+
+DESIGN adjustmentDashboard {
+    OBJECTS {
+        MOVE PROPERTY(barcode()) FIRST {
+            caption = '';
+            placeholder = 'Введите код места хранения';
+            alignment = STRETCH;
+        }
+    }
+}
+
+showMobileForms() + {
+    IF permit(currentUser(), navigatorElementCanonicalName('Inventory.adjustmentDashboard')) THEN
+        SHOW adjustmentDashboard NOWAIT;
+}

@@ -1,0 +1,37 @@
+MODULE AdjustmentScan;
+
+REQUIRE Adjustment, InvLedgerLot, Location;
+
+NAMESPACE Inventory;
+
+CLASS AdjustmentScan 'Сканирование на инвентаризации';
+adjustment = DATA Adjustment (AdjustmentScan) NONULL DELETE INDEXED;
+
+countScan 'Просканировано' (Adjustment r) = GROUP SUM 1 IF adjustment(AdjustmentScan s) = r MATERIALIZED;
+
+user = DATA CustomUser (AdjustmentScan);
+nameUser 'Пользователь' (AdjustmentScan s) = name(user(s));
+user(AdjustmentScan s) <- currentUser() WHEN SET(s IS AdjustmentScan);
+
+dateTime 'Время' = DATA DATETIME (AdjustmentScan);
+dateTime(AdjustmentScan s) <- currentDateTime() WHEN SET(s IS AdjustmentScan);
+time 'Время' (AdjustmentScan s) = TIME(dateTime(s));
+
+lot = DATA Lot (AdjustmentScan);
+idLot (AdjustmentScan l) = id(lot(l));
+INDEX lot(AdjustmentScan s), adjustment(s);
+
+product (AdjustmentScan l) = product(lot(l));
+nameProduct (AdjustmentScan l) = nameProduct(lot(l));
+
+quantity '{Quantity}' = DATA NUMERIC[16,3] (AdjustmentScan);
+quantity(AdjustmentScan r) <- 1 WHEN SET(r IS AdjustmentScan);
+
+scan (Adjustment r, Lot l) = GROUP MAX AdjustmentScan rs IF adjustment(rs) = r AND lot(rs) = l;
+
+quantityScan 'Сканировано' (Adjustment r) = GROUP SUM quantity(AdjustmentScan s) IF adjustment(s) = r MATERIALIZED;
+
+quantityScan 'Сканировано' (Adjustment r, Product p) = GROUP SUM quantity(AdjustmentScan s) IF adjustment(s) = r AND product(s) = p;
+quantityScan 'Сканировано' (AdjustmentLine l) = quantityScan(adjustment(l), product(l));
+
+quantityScan 'Сканировано' (Adjustment r, Lot lt) = GROUP SUM quantity(AdjustmentScan s) IF adjustment(s) = r AND lot(s) = lt;

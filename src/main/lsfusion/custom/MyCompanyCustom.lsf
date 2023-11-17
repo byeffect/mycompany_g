@@ -24,10 +24,5 @@ REQUIRE Eval, ProcessMonitor, Backup,
         InventoryReport, InventoryValuation, ProductMoves, InventoryReportLot,
     
         ReceiptDashboardMobile, SupplierImportGsheets, ShipmentImportGSheets,
-        ShipmentDashboardMobile;
-
-//EXTEND CLASS Theme {
-//    sketchy 'Sketchy',
-//    yeti 'Yeti',
-//    simplex 'Simplex'
-//}
+        ShipmentDashboardMobile,
+        AdjustmentDashboardMobile;

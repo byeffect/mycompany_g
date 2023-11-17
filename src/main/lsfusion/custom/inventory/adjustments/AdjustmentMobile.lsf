@@ -1,0 +1,130 @@
+MODULE AdjustmentMobile;
+
+REQUIRE AdjustmentDone, AdjustmentLot, PackageLot, AdjustmentScan, LocationProduct, InventoryCustom, Mobile, Icon;
+
+NAMESPACE Inventory;
+
+readonlyAdjustment = DATA LOCAL BOOLEAN ();
+
+htmlAdjustment '' (Adjustment r) = HTML (CONCAT '&nbsp;', '<b>' + nameLocation(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(date(r), 'DD/MM'));
+
+htmlAdjustment '' (Adjustment r, Lot l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + id(l) + '</font>', '<i>' + nameLocation(location(r), product(l)) + '</i>', '<font size="-2">(' + locations(location(r), product(l)) + ')</font>') + '</div>');
+
+htmlAdjustment '' (AdjustmentScan l) = HTML ('<div>' + (CONCAT '&nbsp;',
+    time(l),
+    nameUser(l),
+    '<b>' + nameProduct(l) + '</b>',
+    '<font size="-2">' + idLot(l) + '</font>'));
+
+notAdjustedOn 'Не найденные' = DATA LOCAL NESTED BOOLEAN ();
+
+onHand 'On hand' (Adjustment a, Lot l) = onHand(location(a), l);
+onHand 'On hand' (Location l) = GROUP SUM onHand(l, Product p);
+
+// Форма отгрузки
+FORM adjustmentMobile
+    OBJECTS a = Adjustment PANEL
+    PROPERTIES(a) READONLY htmlAdjustment
+
+    OBJECTS ss = AdjustmentScan
+    PROPERTIES(ss) READONLY htmlAdjustment
+    PROPERTIES(ss) NEWSESSION deleteScan = DELETE SHOWIF NOT readonlyAdjustment()
+    FILTERS adjustment(ss) = a
+
+    OBJECTS l = Lot
+    PROPERTIES READONLY BACKGROUND IF onHand(a, l) = quantityScan(a, l) THEN RGB(212,255,212) ELSE
+                                   IF quantityScan(a, l) THEN RGB(255,255,212) 
+                            htmlAdjustment(a, l)
+    FILTERS onHand(a, l) OR quantityScan(a, l)
+    
+    PROPERTIES notAdjustedOn()
+    FILTERS NOT onHand(a, l) = quantityScan(a, l) OR NOT notAdjustedOn()
+;
+
+DESIGN adjustmentMobile {
+    caption = badged('', number(a));
+    OBJECTS {
+        class = '';
+        MOVE PROPERTY(htmlAdjustment(a)) {
+            caption = '';
+            alignment = STRETCH;
+            focusable = FALSE;
+        }
+        REMOVE BOX(a);
+
+        NEW pane {
+            fill = 1;
+            tabbed = TRUE;
+            NEW scans {
+                caption = badged('Сканировано', countScan(a));
+                MOVE GRID(ss) {
+                    PROPERTY(htmlAdjustment(a)) { valueClass = 'myclass'; }
+                }
+                REMOVE BOX(ss);
+                MOVE PROPERTY(deleteScan) { alignment = STRETCH; }
+            }
+            NEW adjustmentContent {
+                caption = badged('В наличии', onHand(location(a)));
+                MOVE PROPERTY(notAdjustedOn());
+                MOVE GRID(l);
+                REMOVE BOX(l);
+            }
+        }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+FORM selectProduct 'Выберите товар'
+    OBJECTS p = Product PANEL NULL
+    PROPERTIES(p) '' = name SELECTOR
+;
+
+DESIGN selectProduct {
+    OBJECTS {
+        MOVE PROPERTY(name(p)) { fill = 1; }
+        REMOVE PROPERTY(formRefresh());
+    }
+}
+
+// scan
+scanBarcode(Adjustment s, AdjustmentScan ss) {
+    INPUT bn = NUMERIC DO
+        FOR STRING b = STRING(bn) DO {
+            IF NOT lot(b) THEN {
+                DIALOG selectProduct OBJECTS p INPUT DO
+                    IF p THEN NEWSESSION {
+                        NEW l = Lot {
+                            id(l) <- b;
+                            product(l) <- p;
+                            APPLY;
+                        }
+                }
+            }
+            IF lot(b) THEN {
+                IF scan(s, lot(b)) THEN
+                    MESSAGE 'Код партии уже был просканирован';
+                ELSE {
+                    NEWSESSION APPLY {
+                        NEW ls = AdjustmentScan {
+                            adjustment(ls) <- s;
+                            lot(ls) <- lot(b);
+                            SEEK adjustmentMobile.ss = ls;
+                        }
+                    }
+                }
+            }
+        }
+}
+
+EXTEND FORM adjustmentMobile
+    PROPERTIES() barcodeNumeric ON CHANGE scanBarcode(a, ss) SHOWIF NOT readonlyAdjustment()
+;
+DESIGN adjustmentMobile {
+    OBJECTS {
+        MOVE PROPERTY(barcodeNumeric()) AFTER PROPERTY(htmlAdjustment(a)) {
+            caption = '';
+            placeholder = 'Введите штрих-код';
+            alignment = STRETCH;
+        }
+    }
+}
