@@ -145,10 +145,13 @@ NAVIGATOR {
 EXTEND FORM adjustmentDashboard
     PROPERTIES() barcode ON CHANGE {
         INPUT b = STRING DO
-            IF location(b) THEN
+            IF location(b) THEN {
                 SEEK adjustmentDashboard.l = location(b);
-            ELSE
+                beep(infoSound(), TRUE);
+            } ELSE {
+                beep(warningSound(), TRUE);
                 MESSAGE 'Не найдено указанного места хранения';
+            }
     }
 ;
 

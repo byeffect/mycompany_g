@@ -101,12 +101,14 @@ NAVIGATOR {
 EXTEND FORM shipmentDashboard
     PROPERTIES() barcode ON CHANGE {
         INPUT b = STRING DO
-            IF NOT GROUP SUM 1 IF number(Shipment r) = b AND NOT done(r) THEN
+            IF NOT GROUP SUM 1 IF number(Shipment r) = b AND NOT done(r) THEN {
+                beep(warningSound(), TRUE);
                 MESSAGE 'Не найдено указанного номера отгрузки';
-            ELSE {
+            } ELSE {
                 FOR Shipment r = (GROUP MAX Shipment sh IF number(sh) = b AND NOT done(sh)) DO {
                     NEWSESSION APPLY { ready(r) <- TRUE; }
                     SEEK shipmentDashboard.ss = r;
+                    IF NOT canceled() THEN beep(infoSound(), TRUE);
                 }
             }
     }

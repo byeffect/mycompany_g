@@ -1,6 +1,6 @@
 MODULE ShipmentMobile;
 
-REQUIRE ShipmentDone, ShipmentLot, PackageLot, ShipmentScan, LocationProduct, InventoryCustom, Mobile, Icon;
+REQUIRE ShipmentDone, ShipmentLot, PackageLot, ShipmentScan, LocationProduct, InventoryCustom, Mobile, Icon, Sound;
 
 NAMESPACE Inventory;
 
@@ -82,17 +82,22 @@ scanBarcode(Shipment s, ShipmentScan ss) {
     INPUT bn = NUMERIC DO
         FOR STRING b = STRING(bn) DO 
             IF NOT lot(b) THEN {
-                IF NOT location(b) OR NOT ss THEN
+                IF NOT location(b) OR NOT ss THEN {
+                    beep(warningSound(), TRUE);
                     MESSAGE 'Не найден код партии';
-                ELSE
+                } ELSE {
                     NEWSESSION APPLY { location(ss) <- location(b); }
+                    IF NOT canceled() THEN beep(infoSound(), TRUE);
+                }
             } ELSE {
-                IF scan(s, lot(b)) THEN
+                IF scan(s, lot(b)) THEN {
+                    beep(warningSound(), TRUE);
                     MESSAGE 'Код партии уже был отгружен';
-                ELSE {
-                    IF NOT GROUP SUM 1 IF initialDemand(ShipmentLine l) AND product(l) = product(lot(b)) AND shipment(l) = s THEN
+                } ELSE {
+                    IF NOT GROUP SUM 1 IF initialDemand(ShipmentLine l) AND product(l) = product(lot(b)) AND shipment(l) = s THEN {
+                        beep(warningSound(), TRUE);
                         MESSAGE 'Этого товара не должно быть в текущей отгрузке';
-                    ELSE
+                    } ELSE
                         NEWSESSION APPLY {
                             NEW ls = ShipmentScan {
                                 shipment(ls) <- s;
@@ -100,6 +105,7 @@ scanBarcode(Shipment s, ShipmentScan ss) {
                                 SEEK shipmentMobile.ss = ls;
                             }
                         }
+                        IF NOT canceled() THEN beep(successSound(), TRUE);
                 }
             }
 }

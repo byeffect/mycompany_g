@@ -1,6 +1,27 @@
 MODULE InventoryCustom;
 
+REQUIRE InventorySettings;
+
 NAMESPACE Inventory;
+
+warningSound = DATA FILE ();
+loadWarningSound 'Загрузить звук предупреждения' () {  INPUT f = warningSound() CHANGE; }
+
+infoSound = DATA FILE ();
+loadInfoSound 'Загрузить звук информации' () { INPUT f = infoSound() CHANGE; }
+
+successSound = DATA FILE ();
+loadSuccessSound 'Загрузить звук успеха' () { INPUT f = successSound() CHANGE; }
+
+EXTEND FORM options
+    PROPERTIES() loadWarningSound, loadInfoSound, loadSuccessSound
+;
+
+DESIGN options {
+    commons {
+        MOVE PROPERTY(loadWarningSound());
+    }
+}
 
 barcode = DATA LOCAL STRING () CHANGEKEY 'SPACE';
 barcodeNumeric = DATA LOCAL NUMERIC () CHANGEKEY 'SPACE';

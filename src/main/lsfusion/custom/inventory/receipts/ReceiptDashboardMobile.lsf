@@ -110,12 +110,14 @@ NAVIGATOR {
 EXTEND FORM receiptDashboard
     PROPERTIES() barcode ON CHANGE {
         INPUT b = STRING DO
-            IF NOT GROUP SUM 1 IF vendorReference(Receipt r) = b AND NOT done(r) THEN
+            IF NOT GROUP SUM 1 IF vendorReference(Receipt r) = b AND NOT done(r) THEN {
+                beep(warningSound(), TRUE);
                 MESSAGE 'Не найдено указанного номера приемки';
-            ELSE {
+            } ELSE {
                 FOR Receipt r = (GROUP MAX Receipt rc IF vendorReference(rc) = b AND NOT done(rc)) DO {
                     NEWSESSION APPLY { ready(r) <- TRUE; }
                     SEEK receiptDashboard.rr = r;
+                    IF NOT canceled() THEN beep(infoSound(), TRUE);
                 }
             }
     }

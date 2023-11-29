@@ -1,6 +1,6 @@
 MODULE AdjustmentMobile;
 
-REQUIRE AdjustmentDone, AdjustmentLot, PackageLot, AdjustmentScan, LocationProduct, InventoryCustom, Mobile, Icon;
+REQUIRE AdjustmentDone, AdjustmentLot, PackageLot, AdjustmentScan, LocationProduct, InventoryCustom, Mobile, Icon, Sound;
 
 NAMESPACE Inventory;
 
@@ -92,6 +92,7 @@ scanBarcode(Adjustment s, AdjustmentScan ss) {
         FOR STRING b = STRING(bn) DO {
             IF NOT lot(b) THEN {
                 IF defaultProduct(location(s)) THEN {
+                    beep(warningSound(), TRUE);
                     ASK 'Не найдена партия с кодом ' + b + '. Создать новую с товаром ' + name(defaultProduct(location(s))) + '?' DO NEWSESSION {
                         NEW l = Lot {
                             id(l) <- b;
@@ -110,9 +111,10 @@ scanBarcode(Adjustment s, AdjustmentScan ss) {
                     }
             }
             IF lot(b) THEN {
-                IF scan(s, lot(b)) THEN
+                IF scan(s, lot(b)) THEN {
+                    beep(warningSound(), TRUE);
                     MESSAGE 'Код партии уже был просканирован';
-                ELSE {
+                } ELSE {
                     NEWSESSION APPLY {
                         NEW ls = AdjustmentScan {
                             adjustment(ls) <- s;
@@ -120,6 +122,7 @@ scanBarcode(Adjustment s, AdjustmentScan ss) {
                             SEEK adjustmentMobile.ss = ls;
                         }
                     }
+                    IF NOT canceled() THEN beep(successSound(), TRUE);
                 }
             }
         }
