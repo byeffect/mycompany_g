@@ -15,7 +15,7 @@ markAsDone 'Завершить' (Receipt r) {
         done(ReceiptLine l) <- quantityScan(l) WHERE receipt(l) = r;
         done(ReceiptLine l, Lot lt) <- quantityScan(r, lt) IF product(l) = product(lt) WHERE receipt(l) = r;
         
-        FOR NUMERIC[16,3] q = quantityScan(r, product(ReceiptLine rl), Location l) INLINE NEW p = ReceiptPutAway DO {
+        FOR NUMERIC[16,3] q = quantityScan(r, product(ReceiptLine rl), Location l) IF receipt(rl) = r INLINE NEW p = ReceiptPutAway DO {
             receiptLine(p) <- rl;
             location(p) <- l;
             quantity(p) <- q;
