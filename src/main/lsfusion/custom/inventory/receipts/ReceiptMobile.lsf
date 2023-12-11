@@ -159,13 +159,14 @@ scanBarcode(Receipt r, Package p, ReceiptScan rs) {
                                     beep(warningSound(), TRUE);
                                     MESSAGE 'Этой партии не должно быть в текущей приемке';
                                 } ELSE
-                                    NEWSESSION APPLY {
+                                    NEWSESSION {
                                         NEW s = ReceiptScan {
                                             receipt(s) <- r;
                                             package(s) <- p;
                                             lot(s) <- lot(b);
                                             SEEK receiptMobile.s = s;
                                         }
+                                        APPLY;
                                         IF NOT canceled() THEN beep(successSound(), TRUE);
                                     }
                             }

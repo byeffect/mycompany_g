@@ -115,12 +115,13 @@ scanBarcode(Adjustment s, AdjustmentScan ss) {
                     beep(warningSound(), TRUE);
                     MESSAGE 'Код партии уже был просканирован';
                 } ELSE {
-                    NEWSESSION APPLY {
+                    NEWSESSION {
                         NEW ls = AdjustmentScan {
                             adjustment(ls) <- s;
                             lot(ls) <- lot(b);
                             SEEK adjustmentMobile.ss = ls;
                         }
+                        APPLY;
                     }
                     IF NOT canceled() THEN beep(successSound(), TRUE);
                 }

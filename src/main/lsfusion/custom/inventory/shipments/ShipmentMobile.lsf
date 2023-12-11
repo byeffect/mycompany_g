@@ -98,14 +98,15 @@ scanBarcode(Shipment s, ShipmentScan ss) {
                         beep(warningSound(), TRUE);
                         MESSAGE 'Этого товара не должно быть в текущей отгрузке';
                     } ELSE
-                        NEWSESSION APPLY {
+                        NEWSESSION {
                             NEW ls = ShipmentScan {
                                 shipment(ls) <- s;
                                 lot(ls) <- lot(b);
                                 SEEK shipmentMobile.ss = ls;
                             }
+                            APPLY;
+                            IF NOT canceled() THEN beep(successSound(), TRUE);
                         }
-                        IF NOT canceled() THEN beep(successSound(), TRUE);
                 }
             }
 }
