@@ -1,0 +1,34 @@
+MODULE ReceiptPlan;
+
+REQUIRE ReceiptScan, ReceiptDone, ReceiptFilter, Time;
+
+NAMESPACE Inventory;
+
+quantityReceipt 'Принято (коробов)' (DATE d, Location l) = GROUP SUM 1 IF quantityScan(Receipt r) AND executionDate(r) = d AND location(r) = l; 
+quantityScan 'Принято (товаров)' (DATE d, Location l) = GROUP SUM quantityScan(Receipt r) IF executionDate(r) = d AND location(r) = l;
+
+planReceipt 'План (коробов)' = DATA INTEGER (DATE, Location);
+planScan 'План (товаров)' = DATA NUMERIC[16,3] (DATE, Location);
+
+EXTEND FORM receipts
+    OBJECTS plnL = Location PANEL
+    PROPERTIES(plnL) name SELECTOR
+
+    OBJECTS d = DATE
+    PROPERTIES 'Date' = VALUE(d)
+    PROPERTIES(d, plnL) planReceipt BACKGROUND IF planReceipt(d, plnL) <= quantityReceipt(d, plnL) THEN RGB(212,255,212),
+                        quantityReceipt READONLY,
+                        planScan BACKGROUND IF planScan(d, plnL) <= quantityScan(d, plnL) THEN RGB(212,255,212),
+                        quantityScan READONLY
+    FILTERS iterate(d, from(dates), to(dates)) OR quantityReceipt(d, plnL) OR planReceipt(d, plnL)
+;
+
+DESIGN receipts {
+    tabbedPane {
+        NEW plan {
+            caption = 'План';
+            MOVE PROPERTY(name(plnL));
+            MOVE BOX(d);
+        }
+    }
+}
