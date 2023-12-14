@@ -1,6 +1,6 @@
 MODULE ReceiptDashboardMobile;
 
-REQUIRE ReceiptMobile, ReceiptPutAwayLot, ReceiptCustom;
+REQUIRE ReceiptMobile, ReceiptPutAwayLot, ReceiptCustom, ReceiptPlan;
 
 NAMESPACE Inventory;
 
@@ -95,9 +95,18 @@ FORM receiptDashboard 'Приемка'
     OBJECTS rd = Receipt
     PROPERTIES(rd) READONLY htmlReceipt, initialDemand, quantityScan
     PROPERTIES(rd) open, return
-    FILTERS status(rd) = ReceiptStatus.done OR status(rd) = ReceiptStatus.putAway
+    FILTERS done(rd)
     FILTERGROUP lastDays
         FILTER 'Последние' executionDate(rd) >= subtract(currentDate(), 1)
+
+    OBJECTS dp = DATE PANEL
+    PROPERTIES(dp) datePlan 'Дата' = VALUE
+    
+    OBJECTS rp = Receipt
+    PROPERTIES(rp) BACKGROUND IF done(rp) THEN RGB(212,255,212) ELSE
+                              IF ready(rp) THEN RGB(255,255,212) 
+                   READONLY htmlReceipt, initialDemand, quantityScan
+    FILTERS receiveDate(rp) = dp
 ;
 
 countReceiptReady = GROUP SUM 1 IF status(Receipt rr) = ReceiptStatus.ready;
@@ -136,9 +145,31 @@ DESIGN receiptDashboard {
                 }
                 REMOVE BOX(rd);
             }
+            NEW plan {
+                caption = badged('План', receiveReceipt(dp));
+                MOVE PROPERTY(datePlan);
+                MOVE GRID(rp);
+                REMOVE BOX(rp);
+            }
         }
     }
     REMOVE TOOLBARBOX;
+}
+
+startReceiving 'Начать приемку' (Receipt r) {
+    NEWSESSION APPLY { ready(r) <- TRUE; }
+    SEEK receiptDashboard.rr = r;
+    ACTIVATE TAB receiptDashboard.ready;
+}
+
+EXTEND FORM receiptDashboard
+    PROPERTIES(rp) startReceiving
+;
+
+DESIGN receiptDashboard {
+    plan {
+        MOVE PROPERTY(startReceiving(rp)) { alignment = STRETCH; }
+    }
 }
 
 NAVIGATOR {
@@ -150,11 +181,11 @@ NAVIGATOR {
 EXTEND FORM receiptDashboard
     PROPERTIES() barcode ON CHANGE {
         INPUT b = STRING DO
-            IF NOT GROUP SUM 1 IF vendorReference(Receipt r) = b AND NOT done(r) THEN {
+            IF NOT GROUP SUM 1 IF vendorReference(Receipt r) = b AND NOT done(r) AND NOT canceled(r) THEN {
                 beep(warningSound(), TRUE);
                 MESSAGE 'Не найдено указанного номера приемки';
             } ELSE {
-                FOR Receipt r = (GROUP MAX Receipt rc IF vendorReference(rc) = b AND NOT done(rc)) DO {
+                FOR Receipt r = (GROUP MAX Receipt rc IF vendorReference(rc) = b AND NOT done(rc) AND NOT canceled(rc)) DO {
                     NEWSESSION APPLY { ready(r) <- TRUE; }
                     SEEK receiptDashboard.rr = r;
                     IF NOT canceled() THEN beep(infoSound(), TRUE);

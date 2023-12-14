@@ -1,8 +1,22 @@
 MODULE ReceiptPlan;
 
-REQUIRE ReceiptScan, ReceiptDone, ReceiptFilter, Time;
+REQUIRE ReceiptScan, ReceiptDone, ReceiptCanceled, ReceiptFilter, Time;
 
 NAMESPACE Inventory;
+
+receiveDate 'Дата приемки' = DATA DATE (Receipt) INDEXED;
+EXTEND FORM receipts
+    PROPERTIES(r) receiveDate AFTER scheduledDateTime(r)
+;
+
+EXTEND FORM receipt
+    PROPERTIES(r) receiveDate
+;
+DESIGN receipt {
+    headerLeft {
+        MOVE PROPERTY(receiveDate(r)) AFTER PROPERTY(scheduledDateTime(r));
+    }
+}
 
 quantityReceipt 'Принято (коробов)' (DATE d, Location l) = GROUP SUM 1 IF quantityScan(Receipt r) AND executionDate(r) = d AND location(r) = l; 
 quantityScan 'Принято (товаров)' (DATE d, Location l) = GROUP SUM quantityScan(Receipt r) IF executionDate(r) = d AND location(r) = l;
@@ -10,25 +24,70 @@ quantityScan 'Принято (товаров)' (DATE d, Location l) = GROUP SUM 
 planReceipt 'План (коробов)' = DATA INTEGER (DATE, Location);
 planScan 'План (товаров)' = DATA NUMERIC[16,3] (DATE, Location);
 
+receiveReceipt 'К приемке (коробов)' (DATE d, Location l) = GROUP SUM 1 IF receiveDate(Receipt r) = d AND location(r) = l;
+receiveScan 'К приемке (товаров)' (DATE d, Location l) = GROUP SUM initialDemand(Receipt r) IF receiveDate(r) = d AND location(r) = l;
+
+receiveReceipt 'К приемке (коробов)' (DATE d) = GROUP SUM 1 IF receiveDate(Receipt r) = d;
+
 EXTEND FORM receipts
     OBJECTS plnL = Location PANEL
     PROPERTIES(plnL) name SELECTOR
 
-    OBJECTS d = DATE
-    PROPERTIES 'Date' = VALUE(d)
-    PROPERTIES(d, plnL) planReceipt BACKGROUND IF planReceipt(d, plnL) <= quantityReceipt(d, plnL) THEN RGB(212,255,212),
+    OBJECTS dln = DATE
+    PROPERTIES 'Date' = VALUE(dln)
+    PROPERTIES(dln, plnL) planReceipt BACKGROUND IF planReceipt(dln, plnL) <= quantityReceipt(dln, plnL) THEN RGB(212,255,212),
+                        receiveReceipt BACKGROUND IF receiveReceipt(dln, plnL) <= quantityReceipt(dln, plnL) THEN RGB(212,255,212),
                         quantityReceipt READONLY,
-                        planScan BACKGROUND IF planScan(d, plnL) <= quantityScan(d, plnL) THEN RGB(212,255,212),
+                        planScan BACKGROUND IF planScan(dln, plnL) <= quantityScan(dln, plnL) THEN RGB(212,255,212),
+                        receiveScan BACKGROUND IF receiveScan(dln, plnL) <= quantityScan(dln, plnL) THEN RGB(212,255,212),
                         quantityScan READONLY
-    FILTERS iterate(d, from(dates), to(dates)) OR quantityReceipt(d, plnL) OR planReceipt(d, plnL)
+    FILTERS iterate(dln, (MIN from(dates), subtract(currentDate(), 3)), MIN to(dates), sum(currentDate(), 7)) OR quantityReceipt(dln, plnL) OR planReceipt(dln, plnL)
+    
+    OBJECTS rln = Receipt
+    PROPERTIES(rln) READONLY executionDate, imagedNameStatus BACKGROUND colorStatus(r), number, vendorReference, nameVendor, initialDemand, quantityScan
+    PROPERTIES(rln) EDIT
+    FILTERS receiveDate(rln) = dln,
+            location(rln) = plnL
 ;
 
 DESIGN receipts {
     tabbedPane {
         NEW plan {
             caption = 'План';
-            MOVE PROPERTY(name(plnL));
-            MOVE BOX(d);
+            horizontal = TRUE;
+            NEW planLeft {
+                fill = 1;
+                MOVE PROPERTY(name(plnL));
+                MOVE BOX(dln);
+            }
+            NEW planRight {
+                fill = 2;
+                MOVE BOX(rln) {
+                    width = 100;
+                    fill = 1;
+                }
+            }
+        }
+    }
+}
+
+// add receive
+
+receiveReference 'Введите номера коробов : ' = DATA LOCAL STRING(DATE);
+changeReceiveReference (DATE d) {
+    INPUT s = STRING DO
+        FOR iterate(INTEGER i, 1, wordCount(s, ' ')) DO
+            receiveDate(Receipt r) <- d WHERE vendorReference(r) = getWord(s, ' ', i) AND NOT done(r) AND NOT canceled(r);
+}
+
+EXTEND FORM receipts
+    PROPERTIES(dln) receiveReference PANEL ON CHANGE changeReceiveReference(dln)
+;
+
+DESIGN receipts {
+    planRight {
+        MOVE PROPERTY(receiveReference(dln)) FIRST {
+            alignment = STRETCH;
         }
     }
 }
