@@ -4,7 +4,7 @@ REQUIRE ReceiptLot;
 
 NAMESPACE Inventory;
 
-note 'Note' = DATA RICHTEXT (ReceiptLine);
+note 'Note' = DATA TEXT (ReceiptLine);
 
 EXTEND FORM receipt
     PROPERTIES(l) note PANEL
