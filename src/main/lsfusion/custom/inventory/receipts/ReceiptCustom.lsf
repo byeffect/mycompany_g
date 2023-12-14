@@ -1,0 +1,20 @@
+MODULE ReceiptCustom;
+
+REQUIRE ReceiptLot;
+
+NAMESPACE Inventory;
+
+note 'Note' = DATA RICHTEXT (ReceiptLine);
+
+EXTEND FORM receipt
+    PROPERTIES(l) note PANEL
+;
+
+DESIGN receipt {
+    linesTab {
+        NEW notes {
+            caption = 'Примечание';
+            MOVE PROPERTY(note(l)) { caption = ''; fill = 1; }
+        }
+    }
+}

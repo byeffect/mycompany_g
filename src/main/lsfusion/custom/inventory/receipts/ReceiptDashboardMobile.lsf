@@ -1,12 +1,47 @@
 MODULE ReceiptDashboardMobile;
 
-REQUIRE ReceiptMobile, ReceiptPutAwayLot;
+REQUIRE ReceiptMobile, ReceiptPutAwayLot, ReceiptCustom;
 
 NAMESPACE Inventory;
 
 receive 'Принять' (Receipt r) {
     SHOW receiptMobile OBJECTS r = r DOCKED NOWAIT;
 } CHANGEMOUSE 'DBLCLK';
+
+notFilledNote (Receipt r) = GROUP SUM 1 IF receipt(ReceiptLine l) = r AND initialDemand(l) AND NOT done(l) = initialDemand(l) AND NOT note(l); 
+FORM inputReceiptNote 'Примечание'
+    OBJECTS r = Receipt PANEL
+    
+    OBJECTS l = ReceiptLine
+    PROPERTIES(l) READONLY BACKGROUND RGB(255,212,212) IF NOT note(l) nameProduct, initialDemand, done
+    PROPERTIES(l) note PANEL
+    
+    PROPERTIES formROk = formOk() DISABLEIF notFilledNote(r)
+    
+    FILTERS receipt(l) = r,
+            initialDemand(l) AND NOT done(l) = initialDemand(l)
+;
+
+DESIGN inputReceiptNote {
+    OBJECTS {
+        REMOVE BOX(l);
+        MOVE GRID(l) {
+            flex = 0;
+            height = -1;
+            PROPERTY(initialDemand(l)) { charWidth = 4; }
+            PROPERTY(done(l)) { charWidth = 4; }
+        }
+        MOVE PROPERTY(note(l)) {
+            caption = '';
+            height = 100;
+            fill = 3;
+        }
+    }
+    TOOLBARRIGHT {
+        REMOVE PROPERTY(formOk());
+        MOVE PROPERTY(formROk) BEFORE PROPERTY(formCancel());
+    }
+}
 
 markAsDone 'Завершить' (Receipt r) {
     NEWSESSION { 
@@ -23,9 +58,14 @@ markAsDone 'Завершить' (Receipt r) {
             quantity(p, Lot lt) <- quantityScan(r, lt, l) IF product(rl) = product(lt);
         }
         
-        APPLY;
+        IF GROUP SUM 1 IF initialDemand(ReceiptLine l) AND NOT done(l) = initialDemand(l) THEN {
+            DIALOG inputReceiptNote OBJECTS r = r NOMANAGESESSION DO {
+                APPLY;
+            }
+        } ELSE
+            ASK 'Завершить приемку ?' DO APPLY;
     }
-} CONFIRM;
+};
 
 open 'Открыть' (Receipt r) {
     NEWSESSION {
