@@ -22,15 +22,15 @@ referencePackage 'Упаковка' (ReceiptScan r) = reference(package(r));
 INDEX package(ReceiptScan s), receipt(s); 
 
 lot = DATA Lot (ReceiptScan);
-idLot (ReceiptScan l) = id(lot(l));
+idLot 'Lot' (ReceiptScan l) = id(lot(l));
 INDEX lot(ReceiptScan s), receipt(s);
 
 product (ReceiptScan l) = product(lot(l));
-nameProduct (ReceiptScan l) = nameProduct(lot(l));
+nameProduct 'Product' (ReceiptScan l) = nameProduct(lot(l));
 
 location = DATA Location (ReceiptScan);
 idLocation (ReceiptScan l) = id(location(l));
-nameLocation (ReceiptScan l) = name(location(l));
+nameLocation 'Location' (ReceiptScan l) = name(location(l));
 INDEX location(ReceiptScan s), receipt(s), lot(s);
 
 WHEN LOCAL SETCHANGED(lot(ReceiptScan s)) AND location(location(receipt(s)), product(s)) DO 
@@ -51,3 +51,18 @@ quantityScan (ReceiptLine l) = quantityScan(receipt(l), product(l));
 quantityScan (Receipt r, Product p, Location l) = GROUP SUM quantity(ReceiptScan s) IF receipt(s) = r AND product(s) = p AND location(s) = l;
 quantityScan (Receipt r, Lot lt) = GROUP SUM quantity(ReceiptScan s) IF receipt(s) = r AND lot(s) = lt;
 quantityScan (Receipt r, Lot lt, Location l) = GROUP SUM quantity(ReceiptScan s) IF receipt(s) = r AND lot(s) = lt AND location(s) = l;
+
+
+EXTEND FORM receipt
+    OBJECTS rsc = ReceiptScan
+    PROPERTIES(rsc) READONLY nameUser, dateTime, referencePackage, idLot, nameProduct, nameLocation, quantity
+    FILTERS receipt(rsc) = r
+;
+
+DESIGN receipt {
+    details {
+        MOVE BOX(rsc) {
+            caption = badged('Сканирования', INTEGER(quantityScan(r)));
+        }
+    }
+}
