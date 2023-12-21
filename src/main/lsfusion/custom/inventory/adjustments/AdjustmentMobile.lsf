@@ -1,6 +1,6 @@
 MODULE AdjustmentMobile;
 
-REQUIRE AdjustmentDone, AdjustmentLot, PackageLot, AdjustmentScan, LocationProduct, InventoryCustom, Mobile, Icon, Sound;
+REQUIRE AdjustmentDone, AdjustmentLot, PackageLot, AdjustmentScan, LocationProduct, InventoryCustom, LotCustom, Mobile, Icon, Sound;
 
 NAMESPACE Inventory;
 
@@ -74,18 +74,6 @@ DESIGN adjustmentMobile {
     REMOVE TOOLBARBOX;
 }
 
-FORM selectProduct 'Выберите товар'
-    OBJECTS p = Product PANEL NULL
-    PROPERTIES(p) '' = name SELECTOR
-;
-
-DESIGN selectProduct {
-    OBJECTS {
-        MOVE PROPERTY(name(p)) { fill = 1; }
-        REMOVE PROPERTY(formRefresh());
-    }
-}
-
 // scan
 scanBarcode(Adjustment s, AdjustmentScan ss) {
     INPUT bn = NUMERIC DO
@@ -101,14 +89,7 @@ scanBarcode(Adjustment s, AdjustmentScan ss) {
                         }
                     } 
                 } ELSE
-                    DIALOG selectProduct OBJECTS p INPUT DO
-                        IF p THEN NEWSESSION {
-                            NEW l = Lot {
-                                id(l) <- b;
-                                product(l) <- p;
-                                APPLY;
-                            }
-                    }
+                    createLot(b);
             }
             IF lot(b) THEN {
                 IF scan(s, lot(b)) THEN {

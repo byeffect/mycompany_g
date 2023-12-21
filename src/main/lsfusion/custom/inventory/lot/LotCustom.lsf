@@ -1,0 +1,28 @@
+MODULE LotCustom;
+
+REQUIRE Lot;
+
+NAMESPACE Inventory;
+
+FORM selectProduct 'Выберите товар'
+    OBJECTS p = Product PANEL NULL
+    PROPERTIES(p) '' = name SELECTOR
+;
+
+DESIGN selectProduct {
+    OBJECTS {
+        MOVE PROPERTY(name(p)) { fill = 1; }
+        REMOVE PROPERTY(formRefresh());
+    }
+}
+
+createLot (STRING id) {
+    DIALOG selectProduct OBJECTS p INPUT DO
+        IF p THEN NEWSESSION {
+            NEW l = Lot {
+                id(l) <- id;
+                product(l) <- p;
+                APPLY;
+            }
+        }
+}

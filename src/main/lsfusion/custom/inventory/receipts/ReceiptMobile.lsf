@@ -1,6 +1,6 @@
 MODULE ReceiptMobile;
 
-REQUIRE ReceiptDone, ReceiptPackage, ReceiptLot, PackageLot, ReceiptScan, InventoryCustom, Mobile, Icon, Sound;
+REQUIRE ReceiptDone, ReceiptPackage, ReceiptLot, PackageLot, ReceiptScan, InventoryCustom, LotCustom, Mobile, Icon, Sound;
 
 NAMESPACE Inventory;
 
@@ -127,6 +127,9 @@ DESIGN receiptMobile {
     }
 }
 
+createLots 'Создавать партии' = DATA BOOLEAN (ReceiptType);
+EXTEND FORM receiptType PROPERTIES(o) createLots;
+
 // scan
 scanBarcode(Receipt r, Package p, ReceiptScan rs) {
     INPUT bn = NUMERIC DO
@@ -141,12 +144,17 @@ scanBarcode(Receipt r, Package p, ReceiptScan rs) {
                     IF NOT lot(b) THEN {
                         IF NOT location(b) OR NOT rs THEN {
                             beep(warningSound(), TRUE);
-                            MESSAGE 'Не найден код партии';
+                            IF createLots(type(r)) THEN
+                                createLot(b);
+                            ELSE
+                                MESSAGE 'Не найден код партии';
+                            
                         } ELSE {
                             NEWSESSION APPLY { location(rs) <- location(b); }
                             IF NOT canceled() THEN beep(infoSound(), TRUE);
                         }
-                    } ELSE {
+                    }
+                    IF lot(b) THEN {
                         IF scan(r, lot(b)) THEN {
                             beep(warningSound(), TRUE);
                             MESSAGE 'Код партии уже был принят';
@@ -155,7 +163,9 @@ scanBarcode(Receipt r, Package p, ReceiptScan rs) {
                                 beep(warningSound(), TRUE);
                                 MESSAGE 'Этой партии не должно быть в текущей упаковке';
                             } ELSE {
-                                IF NOT countPackages(r) AND NOT GROUP SUM 1 IF initialDemand(ReceiptLine l, lot(b)) AND receipt(l) = r THEN {
+                                IF NOT countPackages(r) AND NOT GROUP SUM 1 IF (initialDemand(ReceiptLine l, lot(b)) OR 
+                                                                                (createLots(type(r)) AND product(l) = product(lot(b)))) 
+                                                                            AND receipt(l) = r THEN {
                                     beep(warningSound(), TRUE);
                                     MESSAGE 'Этой партии не должно быть в текущей приемке';
                                 } ELSE
