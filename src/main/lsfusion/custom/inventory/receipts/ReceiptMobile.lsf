@@ -8,6 +8,8 @@ readonlyReceipt = DATA LOCAL BOOLEAN ();
 
 htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + vendorReference(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameVendor(r) + '</font>');
 
+htmlReceipt '' (ReceiptLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + INTEGER(initialDemand(l)) + '</font>') + '</div>');
+
 htmlReceipt '' (PackageLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + idLot(l) + '</font>') + '</div>');
 
 htmlReceipt '' (Lot l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + id(l) + '</font>') + '</div>');
@@ -130,6 +132,20 @@ DESIGN receiptMobile {
 createLots 'Создавать партии' = DATA BOOLEAN (ReceiptType);
 EXTEND FORM receiptType PROPERTIES(o) createLots;
 
+FORM selectReceiptLine 'Выберите товар'
+    OBJECTS r = Receipt PANEL
+    OBJECTS l = ReceiptLine
+    PROPERTIES(l) READONLY htmlReceipt
+    FILTERS receipt(l) = r
+;
+
+DESIGN selectReceiptLine {
+    OBJECTS {
+        MOVE GRID(l);
+        REMOVE BOX(l);
+    }
+}
+
 // scan
 scanBarcode(Receipt r, Package p, ReceiptScan rs) {
     INPUT bn = NUMERIC DO
@@ -144,9 +160,16 @@ scanBarcode(Receipt r, Package p, ReceiptScan rs) {
                     IF NOT lot(b) THEN {
                         IF NOT location(b) OR NOT rs THEN {
                             beep(warningSound(), TRUE);
-                            IF createLots(type(r)) THEN
-                                createLot(b);
-                            ELSE
+                            IF createLots(type(r)) THEN {
+                                DIALOG selectReceiptLine OBJECTS r = r, l INPUT DO
+                                    IF l THEN NEWSESSION {
+                                        NEW lot = Lot {
+                                            id(lot) <- b;
+                                            product(lot) <- product(l);
+                                            APPLY;
+                                        }
+                                    }
+                            } ELSE
                                 MESSAGE 'Не найден код партии';
                             
                         } ELSE {
