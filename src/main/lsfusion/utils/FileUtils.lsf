@@ -4,11 +4,47 @@ NAMESPACE Utils;
 
 uploadFile 'Upload' = DATA LOCAL NAMEDFILE ();
 
+META defineObjectFilesForm(object, form, fobj)
+    EXTEND FORM form
+        OBJECTS of = ###object##File
+        PROPERTIES(of) name, extension, description
+        PROPERTIES(of) READONLY nameUser, dateTime
+        PROPERTIES(of) GRID open, DELETE
+        FILTERS object(of) = fobj
+
+        PROPERTIES = uploadFile() ON CHANGE {
+            INPUT uf = NAMEDFILE DO NEW uof = ###object##File {
+                object(uof) <- fobj;
+                file(uof) <- RAWFILE(uf);
+                name(uof) <- name(uf);
+                extension(uof) <- extension(uf);
+            }
+        }
+    ;
+
+    DESIGN form {
+        details {
+            NEW files {
+                caption = badged('Files', countFiles(fobj));
+                //            caption = badged('Files', countFiles(i)); 
+                horizontal = TRUE;
+                MOVE BOX(of) {
+                    caption = '';
+                }
+                MOVE PROPERTY(uploadFile()) {
+                    panelCaptionVertical = TRUE;
+                    fill = 0.3;
+                }
+            }
+        }
+    }
+END
+
 META defineObjectFiles(object, fobj, classCaption)
 
     CLASS ###object##File classCaption;
 
-    objet = DATA ###object (###object##File) INDEXED NONULL DELETE;
+    object = DATA ###object (###object##File) INDEXED NONULL DELETE;
 
     file = DATA RAWFILE (###object##File);
 
@@ -27,39 +63,15 @@ META defineObjectFiles(object, fobj, classCaption)
 
     open 'Open' (###object##File f) { open(file(f), nameExtension(f)); } IMAGE 'open.png';
 
-    countFiles 'Files' (###object i) = GROUP SUM 1 IF objet(###object##File f) = i;
+    countFiles 'Files' (###object i) = GROUP SUM 1 IF object(###object##File f) = i;
 
-    EXTEND FORM object
-        OBJECTS of = ###object##File
-        PROPERTIES(of) name, extension, description
-        PROPERTIES(of) READONLY nameUser, dateTime
-        PROPERTIES(of) GRID open, DELETE
-        FILTERS objet(of) = fobj
+    firstFile (###object i) = GROUP MIN ###object##File f IF object(f) = i;
+    openFirstFile 'Open' (###object i) { open(firstFile(i)); }
+    openFiles 'Open' (###object i) {
+        FOR object(###object##File f) = i DO
+            open(f);
+    }
 
-        PROPERTIES = uploadFile() ON CHANGE {
-            INPUT uf = NAMEDFILE DO NEW uof = ###object##File {
-                objet(uof) <- fobj;
-                file(uof) <- RAWFILE(uf);
-                name(uof) <- name(uf);
-                extension(uof) <- extension(uf);
-            }
-        }
-    ;
+    @defineObjectFilesForm(object, object, fobj);
 
-    DESIGN object {
-        details {
-            NEW files {
-                caption = badged('Files', countFiles(fobj));
-                //            caption = badged('Files', countFiles(i)); 
-                horizontal = TRUE;
-                MOVE BOX(of) {
-                    caption = '';
-                }
-                MOVE PROPERTY(uploadFile()) {
-                    panelCaptionVertical = TRUE;
-                    fill = 0.3;
-                }
-            }
-        }
-    }    
 END
