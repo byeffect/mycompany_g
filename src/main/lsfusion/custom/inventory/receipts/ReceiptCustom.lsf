@@ -1,6 +1,6 @@
 MODULE ReceiptCustom;
 
-REQUIRE ReceiptLot;
+REQUIRE ReceiptLot, ReceiptSearch, ProductModel;
 
 NAMESPACE Inventory;
 
@@ -18,3 +18,10 @@ DESIGN receipt {
         }
     }
 }
+
+idDefaultModelProduct 'SKU' (ReceiptLine l) = idDefaultModel(product(l));
+
+EXTEND FORM receipt
+    PROPERTIES (l) READONLY idDefaultModelProduct AFTER nameProduct(l)
+    PROPERTIES (itm) READONLY idDefaultModel FIRST 
+;

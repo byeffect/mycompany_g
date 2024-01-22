@@ -28,6 +28,9 @@ receiveReceipt 'К приемке (коробов)' (DATE d, Location l) = GROUP
 receiveScan 'К приемке (товаров)' (DATE d, Location l) = GROUP SUM initialDemand(Receipt r) IF receiveDate(r) = d AND location(r) = l;
 
 receiveReceipt 'К приемке (коробов)' (DATE d) = GROUP SUM 1 IF receiveDate(Receipt r) = d;
+removeFromPlan 'Удалить из плана' (Receipt r){
+    receiveDate(r) <- NULL;
+}IMAGE 'delete.png';
 
 EXTEND FORM receipts
     OBJECTS plnL = Location PANEL
@@ -44,8 +47,8 @@ EXTEND FORM receipts
     FILTERS iterate(dln, (MIN from(dates), subtract(currentDate(), 3)), MIN to(dates), sum(currentDate(), 7)) OR quantityReceipt(dln, plnL) OR planReceipt(dln, plnL)
     
     OBJECTS rln = Receipt
-    PROPERTIES(rln) READONLY executionDate, imagedNameStatus BACKGROUND colorStatus(r), number, vendorReference, nameVendor, initialDemand, quantityScan
-    PROPERTIES(rln) EDIT
+    PROPERTIES(rln) READONLY executionDate, imagedNameStatus BACKGROUND colorStatus(r), number, vendorReference, nameVendor, initialDemand, quantityScan 
+    PROPERTIES(rln) EDIT, removeFromPlan GRID
     FILTERS receiveDate(rln) = dln,
             location(rln) = plnL
 ;
@@ -77,7 +80,7 @@ receiveReference 'Введите номера коробов : ' = DATA LOCAL ST
 changeReceiveReference (DATE d) {
     INPUT s = STRING DO
         FOR iterate(INTEGER i, 1, wordCount(s, ' ')) DO
-            receiveDate(Receipt r) <- d WHERE vendorReference(r) = getWord(s, ' ', i) AND NOT done(r) AND NOT canceled(r);
+            receiveDate(Receipt r) <- d WHERE (vendorReference(r) = getWord(s, ' ', i) OR vendorReference(r) = getWord(getWord(s, ' ', i), '-', 2)) AND NOT done(r) AND NOT canceled(r) ;
 }
 
 EXTEND FORM receipts

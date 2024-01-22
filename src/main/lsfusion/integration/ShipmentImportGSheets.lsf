@@ -1,6 +1,6 @@
 MODULE ShipmentImportGSheets;
 
-REQUIRE SupplierImportGsheets, ShipmentPickingLot;
+REQUIRE SupplierImportGsheets, ShipmentDashboardMobile;
 
 NAMESPACE Inventory;
 
@@ -14,6 +14,7 @@ CONSTRAINT SETCHANGED (FBAPartner()) AND NOT isCustomer(FBAPartner())
     MESSAGE 'Контрагент для отгрузок FBA должен быть покупателем';
 
 splitModel (STRING model) = CONCAT '-', getWord(model, '-', 1), getWord(model, '-', 2); 
+splitModel3 (STRING model) = CONCAT '-', getWord(model, '-', 1), getWord(model, '-', 2), getWord(model, '-', 3); 
 
 importFBA 'Импорт FBA'(){
     NEWSESSION {
@@ -27,22 +28,24 @@ importFBA 'Импорт FBA'(){
         LOCAL sku = STRING(INTEGER);
         LOCAL qty = STRING(INTEGER);
         IMPORT CSV ',' NOHEADER FROM resultFile() TO package, date, sku, qty;
-        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND productModel(splitModel(sku(x))) AND NOT shipmentNumber(id) NEW s = Shipment DO{
+        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND Product p = (OVERRIDE productModel(splitModel(sku(x))), productModel(CONCAT '-', getWord(sku(x), '-', 1), getWord(sku(x), '-', 2), getWord(sku(x), '-', 3)))
+            AND NOT shipmentNumber(id) NEW s = Shipment DO{
             number(s) <- id;
         }
-        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND Product p = productModel(splitModel(sku(x))) AND Shipment s = shipmentNumber(id) AND NOT done(s) DO{
+        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND Product p = (OVERRIDE productModel(splitModel(sku(x))), productModel(CONCAT '-', getWord(sku(x), '-', 1), getWord(sku(x), '-', 2), getWord(sku(x), '-', 3)))
+            AND Shipment s = shipmentNumber(id) AND NOT done(s) DO{
             customer(s) <- FBAPartner();
             scheduledDateTime(s) <- DATETIME(date(x));
             type(s) <- shipmentType('FBA');
         }
 
-        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND Product p = productModel(splitModel(sku(x)))
+        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND Product p = (OVERRIDE productModel(splitModel(sku(x))), productModel(CONCAT '-', getWord(sku(x), '-', 1), getWord(sku(x), '-', 2), getWord(sku(x), '-', 3)))
             AND Shipment s = shipmentNumber(id) AND NOT done(s) AND NOT line(s, p) NEW sl = ShipmentLine DO{
 
             product(sl) <- p;
             shipment(sl) <- s;
         }
-        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND Product p = productModel(splitModel(sku(x)))
+        FOR INTEGER x = [GROUP MAX INTEGER i BY package(i)](STRING id) AND Product p = (OVERRIDE productModel(splitModel(sku(x))), productModel(CONCAT '-', getWord(sku(x), '-', 1), getWord(sku(x), '-', 2), getWord(sku(x), '-', 3)))
             AND Shipment s = shipmentNumber(id) AND NOT done(s) AND ShipmentLine sl = line(s, p) DO{
 
             initialDemand(sl) <- NUMERIC[16,3](qty(x));
@@ -51,14 +54,71 @@ importFBA 'Импорт FBA'(){
     }
 }
 
+EXTEND FORM shipmentDashboard
+    FILTERS customer(ss) = FBAPartner()
+    FILTERS customer(sd) = FBAPartner()
+;
+DESIGN shipmentDashboard{
+    caption = 'Отгрузка FBA';
+}
+
+//import plenty
+
+idPlenty (DATE d) = 'PL_' + toChar(d, 'ddMMyyyy');
+
+patternImei = '<p>(\\d+)';
+
+importPlenty 'Импорт отгрузок Plenty'(){
+    NEWSESSION {
+        getValuesRange(idImportSupplier(), 'IMEI_BASE!A:E', defaultAccount());
+        valuesRows(INTEGER i) <- replace(replace(replace(valuesRows(i), '[', ''), ']', ''), '"', '');
+        LOCAL str = STRING();
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+        LOCAL date = DATE(INTEGER);
+        LOCAL ex_num = STRING (INTEGER);
+        LOCAL order_id = STRING (INTEGER);
+        LOCAL sku = STRING (INTEGER);
+        LOCAL imei = STRING (INTEGER);
+
+        IMPORT CSV ',' NOHEADER WHERE '@row>2' FROM resultFile() TO date, ex_num, order_id, sku, imei;
+        imei(INTEGER i) <- regexpMatch(imei(i), patternImei());
+        FOR INTEGER x = [GROUP MAX INTEGER i BY date(i)](DATE d) AND NOT shipmentNumber(idPlenty(d)) NEW s = Shipment DO{
+            number(s) <- idPlenty(d);
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY date(i)](DATE d) AND Shipment s = shipmentNumber(idPlenty(d)) DO{
+            scheduledDateTime(s) <- DATETIME (d);
+            scheduledDateTime(s) <- DATETIME(date(x));
+            type(s) <- shipmentType('PLENTY');
+            done(s) <- TRUE;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY product(lot(imei(i)))](Product product) AND Shipment s = shipmentNumber(idPlenty(DATE(date(x)))) AND NOT line(s, product) NEW line = ShipmentLine DO{
+            shipment(line) <- s;
+            product(line) <- product;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(DATE(date(x))))
+            AND ShipmentLine line = line(s, product(l)) DO{
+            done(line, l) <- 1;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(DATE(date(x))))
+            AND ShipmentLine line = line(s, product(l)) DO{
+                done(line) <- GROUP SUM done(line, Lot lot) IF done(line, lot);
+        }
+
+        APPLY;
+    }
+}
+
+
 EXTEND FORM integrationData
-    PROPERTIES () nameFBAPartner, importFBA
+    PROPERTIES () nameFBAPartner, importFBA, importPlenty
 ;
 DESIGN integrationData{
     optionsImport{
         MOVE PROPERTY (nameFBAPartner()) BEFORE actionImport;
         actionImport{
             MOVE PROPERTY (importFBA());
+            MOVE PROPERTY (importPlenty());
         }
     }
 }
@@ -66,6 +126,11 @@ onStarted()+{
     IF NOT shipmentType('FBA') THEN NEW s = ShipmentType{
         id(s) <- 'FBA';
         name(s) <- 'FBA';
+        defaultLocation(s) <- GROUP MAX Location l IF countChildren(l);
+    }
+    IF NOT shipmentType('PLENTY') THEN NEW s = ShipmentType{
+        id(s) <- 'PLENTY';
+        name(s) <- 'PLENTY';
         defaultLocation(s) <- GROUP MAX Location l IF countChildren(l);
     }
 }

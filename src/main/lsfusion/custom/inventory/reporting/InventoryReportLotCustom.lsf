@@ -1,0 +1,9 @@
+MODULE InventoryReportLotCustom;
+
+REQUIRE InventoryReportLot, ProductModel;
+
+NAMESPACE Inventory;
+
+EXTEND FORM inventoryReport
+    PROPERTIES (p)  READONLY idDefaultModel BEFORE name(p)
+;

@@ -20,6 +20,8 @@ EXTEND FORM options
 DESIGN options {
     commons {
         MOVE PROPERTY(loadWarningSound());
+        MOVE PROPERTY(loadInfoSound());
+        MOVE PROPERTY(loadSuccessSound());
     }
 }
 

@@ -22,10 +22,10 @@ REQUIRE Eval, ProcessMonitor, Backup,
         ReceiptPackage,
         ReceiptCustom,
         InvLedger, InvLedgerItem, InvLedgerLot,
-        InventoryReport, InventoryValuation, ProductMoves, InventoryReportLot,
+        InventoryReport, InventoryValuation, ProductMoves, InventoryReportLotCustom,
     
-        ReceiptDashboardMobile, SupplierImportGsheets, ShipmentImportGSheets,
-        ShipmentDashboardMobile,
+        ReceiptDashboardMobile, SupplierImportGsheets, ShipmentImportGSheets, EmailReport,
+        ShipmentDashboardMobile, SchedulerNotification,
         AdjustmentDashboardMobile,
 
         ReceiptPlan;

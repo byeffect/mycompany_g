@@ -1,0 +1,21 @@
+MODULE SchedulerNotification;
+
+REQUIRE Scheduler, TelegramCustom, ProductLot;
+
+NAMESPACE Scheduler;
+
+chat = DATA Chat (ScheduledTask);
+nameChat 'Чат для уведомлений' (ScheduledTask t)= name(chat(t));
+
+
+notifyFailure 'Уведомлять об ошибке' = DATA BOOLEAN (ScheduledTask);
+
+EXTEND FORM scheduledTask
+    PROPERTIES(t) notifyFailure, nameChat
+;
+
+message (ScheduledTaskLog l) = CONCAT '\n', '----------------','◽️Задание: ' + nameScheduledTask(l), '◽️Действие: ' + property(l), '◽️Результат: ' + result(l),
+    '◽️Доп имнформация:\n' +  (GROUP CONCAT STRING[800] ((IF failed(ScheduledClientTaskLog ll) THEN '🔴'  ELSE '⚪' ) + message(ll)) IF scheduledTaskLog(ll) = l , '\n' ORDER failed(ll));
+
+WHEN SET(exceptionOccurred(ScheduledTaskLog l) OR (isFailed(l))) AND notifyFailure(scheduledTask(l))
+    AND chat(scheduledTask(l)) DO sendMessage(chat(scheduledTask(l)), STRING[4000](message(l)));

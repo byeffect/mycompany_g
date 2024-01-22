@@ -1,6 +1,6 @@
 MODULE SupplierImportGsheets;
 
-REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot;
+REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot, ReceiptPlan;
 
 NAMESPACE Inventory;
 
@@ -57,8 +57,28 @@ receiptVendor(STRING reference) = GROUP MAX Receipt r IF vendorReference(r) = re
 
 idImportSupplier'ID таблицы импорта поставщиков' = DATA STRING ();
 
+importModelsSupplier2(){
+    LOCAL model = STRING(INTEGER);
+    LOCAL sku = STRING(INTEGER);
+
+    getValuesRange(idImportItemsGsheets(), 'Справочник П2!A2:D', defaultAccount());
+    valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+    LOCAL str = STRING();
+    str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+    stringToFile(str());
+    IMPORT CSV ',' NOHEADER FROM resultFile() TO model, sku;
+
+    FOR [GROUP MAX INTEGER i BY model(i)](STRING model) AND NOT model(model) NEW m = Model DO{
+        id(m) <- model;
+    }
+    FOR INTEGER x = [GROUP MAX INTEGER i BY model(i)](STRING model) AND Model m = model(model) AND Product p = productModel(sku(x)) DO{
+        product(m) <- p;
+    }
+}
+
 importSupplier2 'Импорт данных поставщика 2'(){
     NEWSESSION {
+        importModelsSupplier2();
         getValuesRange(idImportSupplier(), 'Поставщик 2!A3:F', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
         LOCAL str = STRING();
@@ -80,6 +100,7 @@ importSupplier2 'Импорт данных поставщика 2'(){
         FOR [GROUP MAX INTEGER i BY box(i)](STRING box) AND NOT receiptVendor(box) NEW r = Receipt DO{
             vendorReference(r) <- box;
             type(r) <- receiptType('receipt');
+            vendor(r) <- partner('supplier2');
         }
 
         //создание строк приемки
@@ -94,30 +115,9 @@ importSupplier2 'Импорт данных поставщика 2'(){
         FOR INTEGER x = [GROUP MAX INTEGER i BY model(i), box(i)](STRING model, STRING box) AND Receipt r = receiptVendor(box) AND Product p = productModel(model) AND ReceiptLine l = line(r, p)  DO{
             initialDemand(l) <- GROUP SUM 1 IF initialDemand(l, Lot lot);
         }
-        
         APPLY;
     }
 }
-EXTEND FORM integrationData
-    PROPERTIES() importItemsGsheets, importSupplier2, idImportItemsGsheets, idImportSupplier
-;
-
-DESIGN integrationData{
-    serviceAccountsGoogle{
-        NEW optionsImport{
-            caption = 'Настройки импорта';
-            MOVE PROPERTY (idImportItemsGsheets());
-            MOVE PROPERTY (idImportSupplier());
-            NEW actionImport{
-                caption = 'Действия';
-                horizontal = TRUE;
-                MOVE PROPERTY (importItemsGsheets());
-                MOVE PROPERTY (importSupplier2());
-            }
-        }
-    }
-}
-
 
 //импорт размещений
 importLocation(){
@@ -136,13 +136,273 @@ importLocation(){
 
         FOR INTEGER x = [GROUP MAX INTEGER i BY address(i)](STRING[100] id) AND NOT location(id) AND Product p = productModel(id(x)) NEW l = Location DO{
             id(l) <- id;
+            parent(l) <- location('MX000001');
         }
         
         FOR INTEGER x = [GROUP MAX INTEGER i BY address(i)](STRING[100] id) AND Location l = location(id) AND Product p = productModel(id(x)) DO{
             name(l) <- id;
-            location(l, p) <- l;
+            location(parent(l), p) <- l;
         }
         APPLY;
     }
  
+}
+
+//импорт поставщика 1
+idImportSupplier1'ID таблицы импорта поставщика' = DATA STRING ();
+
+//box, imei
+model = DATA LOCAL STRING (STRING, STRING);
+
+getBoxComposition(STRING date){
+    getValuesRange(idImportSupplier1(), date + '?majorDimension=COLUMNS', defaultAccount());
+    valuesRows(INTEGER i) <- replace(replace(replace(valuesRows(i), '[', ''), ']', ''), '"', '');
+    LOCAL contentBox = STRING(STRING);
+
+    FOR STRING s = valuesRows(INTEGER i) ORDER i DO contentBox(getWord(s, ',', 1)) <- replace(valuesRows(i), getWord(s, ',', 1) + ',', '');
+
+    FOR STRING value = contentBox(STRING s) ORDER s DO {
+
+        LOCAL model = STRING();
+
+        FOR iterate(INTEGER i, 1, wordCount(value, ',')) AND STRING a = getWord(value, ',', i) AND length(a) > 0 ORDER i DO{
+            IF onlyDigits(a) AND length(a) = 15 THEN{
+                model(lower(s), a) <- model();
+            }
+            ELSE {
+                model() <- replace(lower(a), ' ', '-');
+            }
+        }
+
+    }
+}
+
+receipt = DATA LOCAL STRING(INTEGER);
+boxId = DATA LOCAL STRING(INTEGER);
+boxNumber = DATA LOCAL STRING (INTEGER);
+quantity =  DATA LOCAL INTEGER(INTEGER);
+
+
+idReceiptNL 'ID таблицы Приемка из NL' = DATA STRING ();
+
+patternDate = '^(0[1-9]|[12][0-9]|3[01])\\.(0[1-9]|1[012])\\.(0[0-9]|1[0-9]|2[0-9])$';
+regexpMatch = FORMULA NULL STRING PG 'SELECT (regexp_match($1, $2)) [1]';
+
+location = DATA LOCAL STRING (INTEGER);
+sheet = DATA LOCAL STRING(INTEGER);
+
+modelBox 'SKU в таблице' = DATA LOCAL STRING (STRING);
+boxNumber 'Номер бокса' = DATA LOCAL STRING (STRING);
+box 'Номер коробки' = DATA LOCAL STRING (STRING);
+modelOriginal = DATA LOCAL Model (STRING);
+idModel 'SKU(оригинал)' (STRING s) = id(modelOriginal(s));
+nameProduct 'Наименование' (STRING s) = name(product(modelOriginal(s)));
+
+CONSTRAINT SETCHANGED (modelOriginal(STRING s)) AND NOT product(model(s)) 
+    CHECKED BY idModel[STRING]
+    MESSAGE 'Нельзя выбрать модель без привязки к товару!'
+;
+
+messageValidation = GROUP CONCAT (CONCAT ':', modelBox(STRING s), boxNumber(s), box(s)), '\n' IF modelBox(s) ORDER s;
+
+FORM modelMatching 'Сопоставление моделей'
+    OBJECTS s = STRING 
+    PROPERTIES (s) READONLY modelBox, boxNumber, box
+    PROPERTIES (s) idModel, nameProduct READONLY 
+    FILTERS modelBox(s)
+    
+    EVENTS ON OK{
+        FOR modelOriginal(STRING str) AND NOT model(modelBox(str)) NEW m = Model DO{
+            id(m) <- modelBox(str);
+        }
+        FOR modelOriginal(STRING str) AND Model m = model(modelBox(str)) DO{
+            product(m) <- product(modelOriginal(str));
+        }
+        APPLY;
+    }
+;
+
+validationReceiptNL 'Валидация данных NL' (DATE date, BOOLEAN showForm){
+    getSheetsInfo(idReceiptNL(), defaultAccount());
+    FOR INTEGER x = [GROUP MAX INTEGER i IF regexpMatch(substr(title(i), 1, 8), patternDate()) BY DATE(substr(title(i), 1, 8))](DATE d) ORDER d DO {
+        IF d = date THEN {
+            getValuesRange(idReceiptNL(), title(x) + '!A6:D', defaultAccount());
+            valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+            LOCAL str = STRING();
+            str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+            stringToFile(str());
+            IMPORT CSV ',' NOHEADER FROM resultFile() TO model, location, quantity, box;
+            
+            //соотносим данные с таблицей unite
+            getValuesRange(idImportSupplier1(), 'unite!A:E', defaultAccount());
+            valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+            str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+            stringToFile(str());
+
+            LOCAL sheetUnite = STRING(INTEGER);
+            LOCAL boxNumberUnite = STRING (INTEGER);
+            LOCAL boxUnite = STRING (INTEGER);
+            LOCAL modelUnite = STRING (INTEGER);
+
+            IMPORT CSV ',' NOHEADER FROM resultFile() TO sheetUnite, boxNumberUnite, boxUnite, modelUnite;
+            FOR  INTEGER xx = [GROUP MAX INTEGER i BY box(i), model(i)] (STRING box, STRING model) AND INTEGER unite = [GROUP MAX INTEGER i BY boxUnite(i), modelUnite(i)](box, STRING modelUnite) AND productModel(model) = productModel(modelUnite) DO{
+                boxNumber(xx) <- lower(replace(getWord(replace(boxNumberUnite(unite), '（', '('), '(', 1), ' ', ''));
+                sheet(xx) <- sheetUnite(unite);
+            }
+
+            //читаем модели в коробках
+            FOR [GROUP MAX INTEGER i BY sheet(i)](STRING sheet) DO {
+                getBoxComposition(sheet);
+
+                FOR STRING model = [GROUP MAX STRING s IF model(STRING box, STRING imei) = s BY box](STRING box) AND NOT productModel(model) AND INTEGER j = [GROUP MIN INTEGER i BY boxNumber(i)](replace(box, 'b0x', 'box')) DO {
+                    modelBox(model) <- model;
+                    boxNumber(model) <- box;
+                    box(model) <- box(j);
+                    //MESSAGE CONCAT ' - ', 'В боксе ' + model, box(j), box, name(productModel(model)) NOWAIT;
+                }
+            }
+            IF (GROUP SUM 1 IF modelBox(STRING s)) THEN {
+                IF showForm THEN SHOW modelMatching;
+                ELSE MESSAGE 'Есть модели не прошедшие валидацию\n' + messageValidation();
+            }
+            ELSE MESSAGE 'Все модели прошли валидацию';
+        }
+    }
+}
+validationReceiptNL 'Валидация данных NL' (DATE date){
+    validationReceiptNL(date, TRUE);
+}
+
+importReceiptNL 'Импорт данных NL' (DATE date, BOOLEAN showForm){
+    getSheetsInfo(idReceiptNL(), defaultAccount());
+    FOR INTEGER x = [GROUP MAX INTEGER i IF regexpMatch(substr(title(i), 1, 8), patternDate()) BY DATE(substr(title(i), 1, 8))](DATE d) ORDER d DO {
+        IF d = date THEN {
+            getValuesRange(idReceiptNL(), title(x) + '!A6:D', defaultAccount());
+            valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+            LOCAL str = STRING();
+            str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+            stringToFile(str());
+            IMPORT CSV ',' NOHEADER FROM resultFile() TO model, location, quantity, box;
+
+            //соотносим данные с таблицей unite
+            getValuesRange(idImportSupplier1(), 'unite!A:E', defaultAccount());
+            valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+            str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+            stringToFile(str());
+
+            LOCAL sheetUnite = STRING(INTEGER);
+            LOCAL boxNumberUnite = STRING (INTEGER);
+            LOCAL boxUnite = STRING (INTEGER);
+            LOCAL modelUnite = STRING (INTEGER);
+
+            IMPORT CSV ',' NOHEADER FROM resultFile() TO sheetUnite, boxNumberUnite, boxUnite, modelUnite;
+            FOR  INTEGER xx = [GROUP MAX INTEGER i BY box(i), model(i)] (STRING box, STRING model) AND INTEGER unite = [GROUP MAX INTEGER i BY boxUnite(i), modelUnite(i)](box, STRING modelUnite) AND productModel(model) = productModel(modelUnite) DO{
+                boxNumber(xx) <- lower(replace(getWord(replace(boxNumberUnite(unite), '（', '('), '(', 1), ' ', ''));
+                sheet(xx) <- sheetUnite(unite);
+            }
+
+            //читаем модели в коробках
+            FOR [GROUP MAX INTEGER i BY sheet(i)](STRING sheet) DO {
+                getBoxComposition(sheet);
+
+                FOR STRING model = [GROUP MAX STRING s IF model(STRING box, STRING imei) = s BY box, imei](STRING box, STRING imei) AND NOT productModel(model) AND INTEGER j = [GROUP MIN INTEGER i BY boxNumber(i)](replace(box, 'b0x', 'box')) DO {
+                    MESSAGE CONCAT ' - ', 'В боксе ' + model, imei, box(j), box, name(productModel(model)) NOWAIT;
+                }
+            }
+        }
+    }
+}
+
+importQuantity 'Импортированное кол-во' = DATA NUMERIC[18,4](ReceiptLine);
+
+importSupplier1'Импорт поставщика 1'(){
+    getValuesRange(idImportSupplier1(), 'unite!A:F', defaultAccount());
+    valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+    LOCAL str = STRING();
+    str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+    stringToFile(str());
+
+    IMPORT CSV ',' NOHEADER FROM resultFile() TO receipt, box, boxId, model, quantity, boxNumber;
+
+    //создание приемок
+    FOR [GROUP MAX INTEGER i BY boxId(i)] (STRING id) AND NOT receiptVendor(id) NEW r = Receipt DO{
+        vendorReference(r) <- id;
+        type(r) <- receiptType('receipt');
+    }
+    FOR INTEGER x = [GROUP MAX INTEGER i BY boxId(i)] (STRING id) AND Receipt r = receiptVendor(id) DO{vendor(r) <- partner('supplier1'); scheduledDateTime(r) <- DATETIME (receipt(x)); }
+
+    FOR INTEGER x = [GROUP MAX INTEGER i BY boxId(i), model(i)](STRING id, STRING model) AND Receipt r = receiptVendor(id) AND Product p = productModel(model)
+        AND NOT line(r, p) NEW l = ReceiptLine DO{
+
+        receipt(l) <- r;
+        product(l) <- p;
+
+    }
+    FOR INTEGER x = [GROUP MAX INTEGER i BY boxId(i), model(i)](STRING id, STRING model) AND Receipt r = receiptVendor(id) AND Product p = productModel(model)
+        AND ReceiptLine l = line(r, p) DO{
+
+        product(l) <- p;
+        importQuantity(l) <- quantity(x);
+        initialDemand(l) <- quantity(x);
+
+    }
+
+
+    // чтение таблицы приемок
+    FOR [GROUP MAX INTEGER i BY receipt(i)](STRING receipt) NOINLINE DO{
+
+        getValuesRange(idImportSupplier1(), receipt + '_!A2:E', defaultAccount());
+        valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+
+        LOCAL receiptColumns = STRING(INTEGER);
+        LOCAL boxColumns = STRING(INTEGER);
+        LOCAL imeiColumns = STRING(INTEGER);
+        LOCAL skuColumns = STRING(INTEGER);
+        LOCAL skuOriginal = STRING(INTEGER);
+
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+
+        IMPORT CSV ',' NOHEADER FROM resultFile() TO receiptColumns, boxColumns, imeiColumns, skuColumns, skuOriginal;
+
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](STRING imei) AND Product p = productModel(skuOriginal(x)) AND
+            NOT lot(imei) NEW l = Lot DO {
+            id(l) <- imei;
+            product(l) <- p;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](STRING imei) AND Product p = productModel(skuOriginal(x)) AND Lot l = lot(imei) AND NOT (GROUP SUM 1 IF initialDemand(ReceiptLine rl, l)) DO {
+            product(l) <- p;
+        }
+
+
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](STRING imei) AND Product p = productModel(skuOriginal(x)) AND Lot l = lot(imei) AND
+            INTEGER xx = [GROUP MAX INTEGER j BY lower(boxNumber(j)), model(j), receipt(j)](lower(boxColumns(x)), skuOriginal(x), receiptColumns(x))
+            AND ReceiptLine line = line(receiptVendor(boxId(xx)), p) AND NOT (GROUP SUM 1 IF initialDemand(ReceiptLine rl, l)) DO initialDemand(line, l) <- 1;
+
+    }
+    APPLY;
+}
+
+
+EXTEND FORM integrationData
+    PROPERTIES() importItemsGsheets, importSupplier2, importSupplier1, idImportItemsGsheets, idImportSupplier, idImportSupplier1, idReceiptNL
+;
+
+DESIGN integrationData{
+    serviceAccountsGoogle{
+        NEW optionsImport{
+            caption = 'Настройки импорта';
+            MOVE PROPERTY (idImportItemsGsheets());
+            MOVE PROPERTY (idImportSupplier());
+            MOVE PROPERTY (idImportSupplier1());
+            MOVE PROPERTY (idReceiptNL());
+            NEW actionImport{
+                caption = 'Действия';
+                horizontal = TRUE;
+                MOVE PROPERTY (importItemsGsheets());
+                MOVE PROPERTY (importSupplier2());
+                MOVE PROPERTY (importSupplier1());
+            }
+        }
+    }
 }

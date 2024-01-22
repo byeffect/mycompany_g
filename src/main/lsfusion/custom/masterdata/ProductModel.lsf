@@ -12,6 +12,13 @@ product = DATA Product (Model);
 nameProduct 'Товар' (Model m) = name(product(m));
 productModel(STRING id) = product(model(id));
 countModels = GROUP SUM 1 BY product(Model m);
+defaultModel (Item i) = GROUP MIN Model m BY product(m);
+idDefaultModel 'SKU' (Item i) = id(defaultModel(i));
+
+EXTEND FORM items
+    PROPERTIES (i) READONLY idDefaultModel
+;
+
 
 EXTEND FORM item
     OBJECTS model = Model

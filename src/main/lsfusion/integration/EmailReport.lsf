@@ -1,0 +1,67 @@
+MODULE EmailReport;
+
+REQUIRE SupplierImportGsheets, ShipmentImportGSheets, AdjustmentDashboardMobile;
+
+NAMESPACE Email;
+
+dateTimeExport 'Дата экспорта' = DATA DATETIME (Shipment);
+dateTimeExport 'Дата экспорта' = DATA DATETIME (Receipt);
+dateTimeExport 'Дата экспорта' = DATA DATETIME (Adjustment);
+
+CLASS ReportRecipient 'Получатель отчета';
+email 'Email' = DATA STRING (ReportRecipient) IN id;
+name 'ФИО' = DATA STRING (ReportRecipient) IN id;
+
+exportReceipts 'Экспорт приемок'(){
+    LOCAL modelLoc = Model(Lot);
+    modelLoc(Lot l) <- GROUP MAX Model m IF product(m) = product(l);
+    
+    LOCAL countToExport = INTEGER ();
+    countToExport() <- GROUP SUM 1 IF  executionDateTime(ReceiptLine r) > dateTimeExport(receipt(r)) OR (executionDateTime(r) AND NOT dateTimeExport(receipt(r)));
+        
+    EXPORT XLSX HEADER FROM 'IMEI' = id(Lot l), 'SKU' = id(modelLoc(l)), 'Приемка' = number(receipt(ReceiptLine r)), 'Коробка' = vendorReference(receipt(r)), 'План' = initialDemand(r, l), 'Факт' = done(r, l), 'Расхождения' = initialDemand(r, l) (-) done(r,l)
+        WHERE initialDemand(r, l) AND( executionDateTime(r) > dateTimeExport(receipt(r)) OR (executionDateTime(r) AND NOT dateTimeExport(receipt(r))))
+            ORDER nameProduct(l);
+    FOR email(ReportRecipient r) AND countToExport() DO{
+        EMAIL
+            SUBJECT ( 'Экспорт приемок за ' + toChar(currentDate(), 'dd.MM.yyyy'))
+            TO email(r)
+            ATTACH exportFile() NAME 'exportReceipts';
+    }
+    dateTimeExport(Receipt r) <- currentDateTime() WHERE executionDateTime(r) > dateTimeExport(r) OR (executionDateTime(r) AND NOT dateTimeExport(r));
+    APPLY;
+}
+
+exportShipments 'Экспорт отгрузок'(){
+    LOCAL modelLoc = Model(Lot);
+    modelLoc(Lot l) <- GROUP MAX Model m IF product(m) = product(l);
+
+    LOCAL countToExport = INTEGER ();
+    countToExport() <- GROUP SUM 1 IF  executionDateTime(ShipmentLine l) > dateTimeExport(shipment(l)) OR (executionDateTime(l) AND NOT dateTimeExport(shipment(l)));
+    
+    
+    EXPORT XLSX HEADER FROM 'IMEI' = id(Lot l), 'SKU' = id(modelLoc(l)), 'Коробка' = number(shipment(ShipmentLine sl)), 'Количество' = done(sl,l)
+        WHERE executionDateTime(sl) > dateTimeExport(shipment(sl)) OR (executionDateTime(sl) AND NOT dateTimeExport(shipment(sl)))
+            ORDER nameProduct(l);
+    FOR email(ReportRecipient r) AND countToExport() DO{
+        EMAIL
+            SUBJECT ( 'Экспорт отгрузок за ' + toChar(currentDate(), 'dd.MM.yyyy'))
+            TO email(r)
+            ATTACH exportFile() NAME 'exportShipments';
+    }
+    dateTimeExport(Shipment s) <- currentDateTime() WHERE executionDateTime(s) > dateTimeExport(s) OR (executionDateTime(s) AND NOT dateTimeExport(s));
+    APPLY;
+}
+
+FORM emailReports 'Отчеты на email'
+    OBJECTS r = ReportRecipient
+    PROPERTIES (r) name, email, NEW, DELETE
+    
+    PROPERTIES TOOLBAR DRAW r exportReceipts(), exportShipments()
+;
+
+NAVIGATOR {
+    reporting{
+        NEW emailReports;
+    }
+}
