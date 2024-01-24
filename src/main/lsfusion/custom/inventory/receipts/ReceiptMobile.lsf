@@ -161,6 +161,17 @@ scanBarcode(Receipt r, Package p, ReceiptScan rs) {
                         IF NOT location(b) OR NOT rs THEN {
                             beep(warningSound(), TRUE);
                             IF createLots(type(r)) THEN {
+                                IF (GROUP SUM 1 IF receipt(ReceiptLine l) == r) == 1 THEN {
+                                    FOR ReceiptLine l == GROUP MAX ReceiptLine rl IF receipt(rl) == r DO {
+                                        ASK 'Создать партию для ' + nameProduct(l) + '?' DO {
+                                            NEW lot = Lot {
+                                                id(lot) <- b;
+                                                product(lot) <- product(l);
+                                                APPLY;
+                                            }
+                                        }
+                                    }
+                                } ELSE 
                                 DIALOG selectReceiptLine OBJECTS r = r, l INPUT DO
                                     IF l THEN NEWSESSION {
                                         NEW lot = Lot {
@@ -186,12 +197,12 @@ scanBarcode(Receipt r, Package p, ReceiptScan rs) {
                                 beep(warningSound(), TRUE);
                                 MESSAGE 'Этой партии не должно быть в текущей упаковке';
                             } ELSE {
-                                IF NOT countPackages(r) AND NOT GROUP SUM 1 IF (initialDemand(ReceiptLine l, lot(b)) OR 
-                                                                                (createLots(type(r)) AND product(l) = product(lot(b)))) 
-                                                                            AND receipt(l) = r THEN {
-                                    beep(warningSound(), TRUE);
-                                    MESSAGE 'Этой партии не должно быть в текущей приемке';
-                                } ELSE
+//                                IF NOT countPackages(r) AND NOT GROUP SUM 1 IF (initialDemand(ReceiptLine l, lot(b)) OR 
+//                                                                                (createLots(type(r)) AND product(l) = product(lot(b)))) 
+//                                                                            AND receipt(l) = r THEN {
+//                                    beep(warningSound(), TRUE);
+//                                    MESSAGE 'Этой партии не должно быть в текущей приемке';
+//                                } ELSE
                                     NEWSESSION {
                                         NEW s = ReceiptScan {
                                             receipt(s) <- r;
