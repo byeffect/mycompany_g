@@ -49,8 +49,11 @@ EXTEND FORM receipts
     OBJECTS rln = Receipt
     PROPERTIES(rln) READONLY executionDate, imagedNameStatus BACKGROUND colorStatus(r), number, vendorReference, nameVendor, initialDemand, quantityScan 
     PROPERTIES(rln) EDIT, removeFromPlan GRID
-    FILTERS receiveDate(rln) = dln,
+    FILTERS receiveDate(rln) = dln OR executionDate(rln) = dln,
             location(rln) = plnL
+    FILTERGROUP date
+                FILTER 'по дате планируемой' receiveDate(rln) = dln DEFAULT
+                FILTER 'по дате приемки' executionDate(rln) = dln
 ;
 
 DESIGN receipts {
@@ -72,15 +75,25 @@ DESIGN receipts {
             }
         }
     }
+    filters {
+        MOVE FILTERGROUP(date) AFTER PROPERTY(filterDates) { alignment = STRETCH; }
+    }
 }
 
 // add receive
 
 receiveReference 'Введите номера коробов : ' = DATA LOCAL STRING(DATE);
 changeReceiveReference (DATE d) {
-    INPUT s = STRING DO
-        FOR iterate(INTEGER i, 1, wordCount(s, ' ')) DO
-            receiveDate(Receipt r) <- d WHERE (vendorReference(r) = getWord(s, ' ', i) OR vendorReference(r) = getWord(getWord(s, ' ', i), '-', 2)) AND NOT done(r) AND NOT canceled(r) ;
+    INPUT s = STRING DO {
+        LOCAL msg = BOOLEAN (INTEGER);
+        FOR iterate(INTEGER i, 1, wordCount(s, ' ')) DO {
+            receiveDate(Receipt r) <- d WHERE (vendorReference(r) = getWord(s, ' ', i) OR vendorReference(r) = getWord(getWord(s, ' ', i), '-', 2)) AND NOT done(r) AND NOT canceled(r);
+            msg(i) <- TRUE WHERE NOT (GROUP SUM 1 IF (vendorReference(Receipt r) = getWord(s, ' ', i) OR vendorReference(r) = getWord(getWord(s, ' ', i), '-', 2)) AND NOT done(r) AND NOT canceled(r));
+        }
+        IF (GROUP SUM 1 IF msg(INTEGER i)) THEN {
+            MESSAGE 'Не найдены короба (отсутствуют или в статусах Выполнен, Отменен):\n' + (GROUP CONCAT getWord(s, ' ', INTEGER i) IF msg(i), '\n' ORDER i);
+        }
+    }       
 }
 
 EXTEND FORM receipts
