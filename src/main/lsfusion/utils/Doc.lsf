@@ -76,7 +76,7 @@ META defineDocStatusForm (doc, let, beforeProp)
     }
     
     EXTEND FORM doc
-        PROPERTIES(##let) imagedNameStatus BACKGROUND colorStatus(##let)
+        PROPERTIES(##let) READONLY imagedNameStatus BACKGROUND colorStatus(##let)
     ;
     
     DESIGN doc {
@@ -142,6 +142,8 @@ META defineDocSearchTab (doc, it)
         TREE categories c = Category PARENT parent(c)
         PROPERTIES READONLY name(c)
         ORDERS name(c)
+        FILTERGROUP activeCategory
+            FILTER '{Active}' active(c) DEFAULT
         
         OBJECTS itm = ###it
         PROPERTIES(itm) READONLY name, nameUom, idBarCode, id, reference
@@ -210,8 +212,9 @@ DESIGN System.options {
 META defineDocHistoryHeader(doc, let)
     CLASS ###doc##History 'Change history';
 
-    doc = DATA ###doc (###doc##History);
-
+    doc = DATA ###doc (###doc##History) INDEXED;
+    countHistories (###doc d) = GROUP SUM 1 IF doc(###doc##History h) = d;
+    
     dateTime 'Date' = DATA DATETIME (###doc##History);
 
     user = DATA User (###doc##History);
@@ -234,31 +237,10 @@ META defineDocHistoryHeader(doc, let)
         }
     }
 
-    EXTEND FORM doc
-        OBJECTS doc##l = ###doc##History
-        PROPERTIES(doc##l) READONLY dateTime, nameUser, hostnameComputer, type, description, pdescription = description PANEL
-        FILTERS doc(doc##l) = let
-    ;
-
-    DESIGN doc {
-        details {
-            NEW history {
-                caption = 'History';
-                fill = 1;
-                horizontal = TRUE;
-                MOVE BOX(doc##l) {
-                    fill = 2;
-                    caption = '';
-                    PROPERTY(description(doc##l)) { valueHeight = 18; }
-                }
-                MOVE PROPERTY(pdescription) { panelCaptionVertical = TRUE; fill = 1; }
-            }
-        }
-    }
 END
 
 META defineDocHistoryLine(doc, docLine, class, fun)
-    
+
     WHEN SETCHANGED(docLine l IS docLine) AND doc(l) = ###doc d
         AND NOT status(d) = ###doc##Status.draft AND NOT disableHistory() DO {
         NEW h = ###doc##History {
@@ -293,7 +275,7 @@ META defineDocHistoryLine(doc, docLine, class, fun)
             description (h) <- 'Changed the initial product quantity' + ' ' + name###class(l) + ' -> ' + ##fun(l);
         }
     }
-        
+
     WHEN CHANGED(class(docLine l)) AND doc(l) = ###doc d
         AND NOT status(d) = ###doc##Status.draft AND NOT disableHistory() DO {
         NEW h = ###doc##History {
@@ -312,11 +294,36 @@ META defineDocHistoryLine(doc, class, fun)
     @defineDocHistoryLine(doc, ###doc##Line, class, fun);
 END
 
+META defineDocHistoryForm(doc, form, let)
+    EXTEND FORM form
+        OBJECTS doc##l = ###doc##History
+        PROPERTIES(doc##l) READONLY dateTime, nameUser, hostnameComputer, type, description, pdescription = description PANEL
+        FILTERS doc(doc##l) = let
+    ;
+
+    DESIGN form {
+        details {
+            NEW history {
+                caption = badged('History', countHistories(let));
+                fill = 1;
+                horizontal = TRUE;
+                MOVE BOX(doc##l) {
+                    fill = 2;
+                    caption = '';
+                    PROPERTY(description(doc##l)) { valueHeight = 18; }
+                }
+                MOVE PROPERTY(pdescription) { panelCaptionVertical = TRUE; fill = 1; }
+            }
+        }
+    }
+END
+
 META defineDocHistory(doc, let, class, fun)
 
     @defineDocHistoryHeader(doc, ##let);
-@defineDocHistoryLine(doc, class, fun);
-    
+    @defineDocHistoryLine(doc, class, fun);
+    @defineDocHistoryForm(doc, doc, let);
+
 END
 
 META defineDocRelation(docTo, docFrom, captTo, captFrom, objTo, objFrom)
