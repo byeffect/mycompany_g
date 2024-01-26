@@ -28,6 +28,12 @@ stop 'Отменить' (Adjustment a) {
 
 create 'Начать инвентаризацию' (Location l) {
     NEWSESSION {
+        FOR Adjustment a == (GROUP MAX Adjustment r IF status(r) == AdjustmentStatus.draft AND location(r) == l AND type(r) == AdjustmentType.all) DO {
+            inProgress(a) <- TRUE;
+            APPLY;
+                        
+            IF NOT canceled() THEN edit(a);
+        } ELSE
         NEW a = Adjustment {
             location(a) <- l;
             type(a) <- AdjustmentType.all;
@@ -80,9 +86,15 @@ FORM adjustmentDashboard 'Инвентаризация'
     PROPERTIES(l, p) READONLY onHand
     ORDERS name(p)
     FILTERS onHand(l, p)
+    
+    OBJECTS sp = Adjustment
+    PROPERTIES(sp) READONLY htmlAdjustment, quantityScan
+    FILTERS status(sp) = AdjustmentStatus.draft,
+            location(sp) = l OR NOT l
 ;
 
 countAdjustmentInProgress = GROUP SUM 1 IF status(Adjustment rr) = AdjustmentStatus.inProgress;
+countAdjustmentDraft = GROUP SUM 1 IF status(Adjustment rr) = AdjustmentStatus.draft;
 
 DESIGN adjustmentDashboard {
     OBJECTS {
@@ -131,9 +143,32 @@ DESIGN adjustmentDashboard {
                 MOVE GRID(p);
                 REMOVE BOX(p);
             }
+            NEW plan {
+                caption = badged('План', countAdjustmentDraft());
+                MOVE GRID(sp) {
+                    PROPERTY(htmlAdjustment(sp)) { caption = ''; }
+                }
+                REMOVE BOX(sp);
+            }
         }
     }
     REMOVE TOOLBARBOX;
+}
+
+start 'Начать инвентаризацию' (Adjustment a) {
+    NEWSESSION APPLY { inProgress(a) <- TRUE; }
+    SEEK adjustmentDashboard.ss = a;
+    ACTIVATE TAB adjustmentDashboard.ready;
+}
+
+EXTEND FORM adjustmentDashboard
+    PROPERTIES(sp) start
+;
+
+DESIGN adjustmentDashboard {
+    plan {
+        MOVE PROPERTY(start(sp)) { alignment = STRETCH; }
+    }
 }
 
 NAVIGATOR {
