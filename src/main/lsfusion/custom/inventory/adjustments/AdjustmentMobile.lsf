@@ -19,7 +19,6 @@ htmlAdjustment '' (AdjustmentScan l) = HTML ('<div>' + (CONCAT '&nbsp;',
 notAdjustedOn 'Не найденные' = DATA LOCAL NESTED BOOLEAN ();
 
 onHand 'On hand' (Adjustment a, Lot l) = onHand(location(a), l);
-onHand 'On hand' (Location l) = GROUP SUM onHand(l, Product p);
 
 // Форма отгрузки
 FORM adjustmentMobile

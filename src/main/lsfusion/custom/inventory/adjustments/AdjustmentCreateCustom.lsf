@@ -1,0 +1,25 @@
+MODULE AdjustmentCreateCustom;
+
+REQUIRE AdjustmentCreate, LocationProduct, AdjustmentLot;
+
+NAMESPACE Inventory;
+
+EXTEND FORM adjustments
+    PROPERTIES(l) READONLY
+                    onHand, nameProducts
+    
+    OBJECTS lt = Lot
+    PROPERTIES(lt) READONLY id, nameProduct
+    PROPERTIES(l, lt) onHand
+    FILTERS onHand(l, lt)
+;
+
+DESIGN adjustments {
+    adjustmentCreate {
+        NEW productPane {
+            fill = 1;
+            MOVE BOX(p);
+            MOVE BOX(lt) { fill = 5; }
+        }
+    }
+}

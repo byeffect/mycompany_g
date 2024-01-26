@@ -21,6 +21,7 @@ REQUIRE Eval, ProcessMonitor, Backup,
         ReceiptLot, ReceiptLotPrint,
         ReceiptPackage,
         ReceiptCustom,
+        AdjustmentCreateCustom,
         InvLedger, InvLedgerItem, InvLedgerLot,
         InventoryReport, InventoryValuation, ProductMoves, InventoryReportLotCustom,
     
