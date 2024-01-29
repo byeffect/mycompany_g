@@ -1,0 +1,13 @@
+MODULE ReceiptPartially;
+
+REQUIRE ReceiptDone;
+
+NAMESPACE Inventory;
+
+EXTEND CLASS ReceiptStatus {
+    partially 'Частично принят'
+}
+partially 'Частично принят' = DATA BOOLEAN (Receipt);
+
+status (Receipt r) += WHEN partially(r) AND done(r) THEN ReceiptStatus.partially;
+color (ReceiptStatus r) += WHEN r = ReceiptStatus.partially THEN RGB(255,212,212);

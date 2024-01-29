@@ -1,6 +1,6 @@
 MODULE ReceiptDashboardMobile;
 
-REQUIRE ReceiptMobile, ReceiptPutAwayLot, ReceiptCustom, ReceiptPlan;
+REQUIRE ReceiptMobile, ReceiptPutAwayLot, ReceiptCustom, ReceiptPlan, ReceiptPartially;
 
 NAMESPACE Inventory;
 
@@ -16,7 +16,7 @@ FORM inputReceiptNote 'Примечание'
     PROPERTIES(l) READONLY BACKGROUND RGB(255,212,212) IF NOT note(l) nameProduct, initialDemand, done
     PROPERTIES(l) note PANEL
     
-    PROPERTIES formROk = formOk() DISABLEIF notFilledNote(r)
+    PROPERTIES formROk = formOk() // DISABLEIF notFilledNote(r)
     
     FILTERS receipt(l) = r,
             initialDemand(l) AND NOT done(l) = initialDemand(l)
@@ -50,6 +50,7 @@ markAsDone 'Завершить' (Receipt r) {
         done(ReceiptLine l) <- quantityScan(l) WHERE receipt(l) = r;
         done(ReceiptLine l, Lot lt) <- quantityScan(r, lt) IF product(l) = product(lt) WHERE receipt(l) = r;
         
+        DELETE ReceiptPutAway p WHERE receipt(receiptLine(p)) = r;
         FOR NUMERIC[16,3] q = quantityScan(r, product(ReceiptLine rl), Location l) IF receipt(rl) = r INLINE NEW p = ReceiptPutAway DO {
             receiptLine(p) <- rl;
             location(p) <- l;
@@ -60,6 +61,7 @@ markAsDone 'Завершить' (Receipt r) {
         
         IF GROUP SUM 1 IF initialDemand(ReceiptLine l) AND NOT done(l) = initialDemand(l) THEN {
             DIALOG inputReceiptNote OBJECTS r = r NOMANAGESESSION DO {
+                partially(r) <- TRUE IF notFilledNote(r);
                 APPLY;
             }
         } ELSE
@@ -84,18 +86,24 @@ return 'Вернуть' (Receipt r) {
     }
 } CONFIRM;
 
+partiallyOn 'Частично' = DATA LOCAL NESTED BOOLEAN ();
+
 FORM receiptDashboard 'Приемка'
     OBJECTS rr = Receipt
     PROPERTIES(rr) READONLY BACKGROUND IF initialDemand(rr) = quantityScan(rr) THEN RGB(212,255,212) ELSE
+                                       IF partially(rr) THEN RGB(255,212,212) ELSE
                                        IF quantityScan(rr) THEN RGB(255,255,212)
                             htmlReceipt, initialDemand, quantityScan
     PROPERTIES(rr) receive, markAsDone
-    FILTERS status(rr) = ReceiptStatus.ready
+    FILTERS status(rr) = ReceiptStatus.ready OR status(rr) = ReceiptStatus.partially 
     
-    OBJECTS rd = Receipt
-    PROPERTIES(rd) READONLY htmlReceipt, initialDemand, quantityScan
+    PROPERTIES() partiallyOn
+    OBJECTS rd = Receipt LAST
+    PROPERTIES(rd) READONLY BACKGROUND IF partially(rd) THEN RGB(255,212,212) 
+                            htmlReceipt, initialDemand, quantityScan
     PROPERTIES(rd) open, return
-    FILTERS done(rd)
+    FILTERS done(rd),
+            partially(rd) OR NOT partiallyOn()
     FILTERGROUP lastDays
         FILTER 'Последние' executionDate(rd) >= subtract(currentDate(), 1)
 
@@ -134,6 +142,7 @@ DESIGN receiptDashboard {
             }
             NEW done {
                 caption = 'Принятые';
+                MOVE PROPERTY(partiallyOn());
                 MOVE GRID(rd) {
                     PROPERTY(htmlReceipt(rd)) { caption = ''; }
                 }
@@ -181,15 +190,13 @@ NAVIGATOR {
 EXTEND FORM receiptDashboard
     PROPERTIES() barcode ON CHANGE {
         INPUT b = STRING DO
-            IF NOT GROUP SUM 1 IF vendorReference(Receipt r) = b AND NOT done(r) AND NOT canceled(r) THEN {
+            FOR Receipt r = (GROUP MAX Receipt rc IF vendorReference(rc) = b AND (NOT done(rc) OR partially(rc)) AND NOT canceled(rc)) DO {
+                NEWSESSION APPLY { ready(r) <- TRUE; }
+                SEEK receiptDashboard.rr = r;
+                IF NOT canceled() THEN beep(infoSound(), TRUE);
+            } ELSE {
                 beep(warningSound(), TRUE);
                 MESSAGE 'Не найдено указанного номера приемки';
-            } ELSE {
-                FOR Receipt r = (GROUP MAX Receipt rc IF vendorReference(rc) = b AND NOT done(rc) AND NOT canceled(rc)) DO {
-                    NEWSESSION APPLY { ready(r) <- TRUE; }
-                    SEEK receiptDashboard.rr = r;
-                    IF NOT canceled() THEN beep(infoSound(), TRUE);
-                }
             }
     }
 ;
