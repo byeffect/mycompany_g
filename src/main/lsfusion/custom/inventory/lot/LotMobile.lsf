@@ -1,40 +1,38 @@
 MODULE LotMobile;
 
-REQUIRE LotCustom, InventoryCustom, Sound, LocationProduct;
+REQUIRE LotCustom, InventoryCustom, Sound, LocationProduct, Mobile;
 
 NAMESPACE Inventory;
 
-filterLot = DATA LOCAL Lot ();
+htmlInvLedger '' (InvLedger il) = HTML ('<div>' + (CONCAT '&nbsp;',
+    '<b>' + class(il) + '</b>',
+    '(' + type(il) + ')',
+    '<u>' + number(il) + '</u>',
+    '<i>' + namePartner(il) + '</i>',
+    '<font size="-1">' + nameFromLocation(il) + '</font>',
+    '<font size="-1">' + '->' + nameToLocation(il) + '</font>') + '</div>');
 
-idFilterLot '{ID}' = id(filterLot());
-nameVendorFilterLot 'Vendor' = nameVendor(filterLot());
-nameProductFilterLot 'Product' = nameProduct(filterLot());
-nameLocationsFilterLot 'Locations' = OVERRIDE locations(filterLot()), (GROUP CONCAT name(location(Location l, product(filterLot()))) IF location(l, product(filterLot())), ', ' ORDER l);
+nameLocations 'Locations' (Lot l) = nameLocations(product(l));
 
 FORM imeiMobile 'IMEI'
+    OBJECTS l = Lot NULL PANEL
     PROPERTIES() barcodeNumeric ON CHANGE {
-        INPUT bn = NUMERIC DO
-            FOR STRING b = STRING(bn) DO
-                FOR Lot l = lot(b) DO {
-                    filterLot() <- l;
-                    beep(infoSound(), TRUE);
-                } ELSE {
-                    beep(warningSound(), TRUE);
-                    MESSAGE 'Не найдено указанного IMEI';
-                }
+        INPUT s = STRING LIST id(Lot ll) DO {
+            IF lot(s) THEN {
+                SEEK imeiMobile.l = lot(s);
+                beep(infoSound(), TRUE);
+            } ELSE {
+                beep(warningSound(), TRUE);
+                MESSAGE 'Не найдено указанного IMEI';
+            }
+        }
     }
-    PROPERTIES() idFilterLot
-    PROPERTIES() READONLY nameVendorFilterLot, nameProductFilterLot, nameLocationsFilterLot
+    PROPERTIES(l) READONLY id, nameVendor, nameProduct, nameLocations 
     
-    OBJECTS i = (il = InvLedger, l = Lot)
-    PROPERTIES(il) READONLY class, type, dateTime, number, namePartner,
-                            nameFromLocation, onHandAFromLocation,
-                            nameToLocation, onHandAToLocation
-    PROPERTIES(il, l) READONLY quantity
-    PROPERTIES(il) NEWSESSION EDIT
-    FILTERGROUP activeInv
-        FILTER '{Active}' active(il) DEFAULT
-    FILTERS quantity(il, l) AND l == filterLot()
+    OBJECTS il = InvLedger
+    PROPERTIES READONLY 
+                        dateTime(il), htmlInvLedger(il)
+    FILTERS quantity(il, l)
 ;
 
 DESIGN imeiMobile {
@@ -48,12 +46,13 @@ DESIGN imeiMobile {
                     caption = '';
                     placeholder = 'Введите штрих-код';
                 }
-                MOVE PROPERTY(idFilterLot()) { panelCaptionVertical = TRUE; }
-                MOVE PROPERTY(nameVendorFilterLot()) { panelCaptionVertical = TRUE; }
-                MOVE PROPERTY(nameProductFilterLot()) { panelCaptionVertical = TRUE; }
-                MOVE PROPERTY(nameLocationsFilterLot()) { panelCaptionVertical = TRUE; }
+                MOVE PROPERTY(nameProduct(l)) { caption = ''; fontSize = 24; focusable = FALSE; }
+                MOVE PROPERTY(id(l)) { focusable = FALSE; }
+                MOVE PROPERTY(nameVendor(l)) { focusable = FALSE; }
+                MOVE PROPERTY(nameLocations(l)) { focusable = FALSE; }
             }
-            MOVE BOX(i);
+            MOVE GRID(il);
+            REMOVE BOX(il);
         }
     }
     REMOVE TOOLBARBOX;
@@ -63,4 +62,9 @@ NAVIGATOR {
     dashboards {
         NEW imeiMobile;
     }
+}
+
+showMobileForms() + {
+    IF permit(currentUser(), navigatorElementCanonicalName('Inventory.imeiMobile')) THEN
+        SHOW imeiMobile NOWAIT;
 }
