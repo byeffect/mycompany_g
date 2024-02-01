@@ -1,8 +1,39 @@
 MODULE LotCustom;
 
-REQUIRE Lot;
+REQUIRE Lot, PartnerPurchase, ReceiptLot;
 
 NAMESPACE Inventory;
+
+dataVendor = DATA Partner (Lot) INDEXED;
+nameDataVendor 'Vendor' (Lot l) = name(dataVendor(l));
+
+CONSTRAINT dataVendor(Lot l) AND NOT isVendor(dataVendor(l)) 
+                CHECKED BY dataVendor[Lot]
+                MESSAGE 'The partner must be a vendor';
+
+
+firstReceiptLine =
+        GROUP LAST ReceiptLine receiptLine
+              ORDER DESC executionDateTime(receiptLine), receiptLine
+              WHERE done(receiptLine, Lot l) AND active(receipt(receiptLine))
+              BY l MATERIALIZED;
+
+vendor (Lot l) = OVERRIDE dataVendor(l), vendor(firstReceiptLine(l));
+nameVendor 'Vendor' (Lot l) = name(vendor(l));
+
+EXTEND FORM lot
+    PROPERTIES(l) nameVendor
+;
+
+DESIGN lot {
+    header {
+        MOVE PROPERTY(nameVendor(l)) { alignment = STRETCH; };
+    }
+}
+
+EXTEND FORM lots
+    PROPERTIES(l) READONLY nameVendor
+;
 
 FORM selectProduct 'Выберите товар'
     OBJECTS p = Product PANEL NULL

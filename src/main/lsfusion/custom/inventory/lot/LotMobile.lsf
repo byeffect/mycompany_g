@@ -1,0 +1,66 @@
+MODULE LotMobile;
+
+REQUIRE LotCustom, InventoryCustom, Sound, LocationProduct;
+
+NAMESPACE Inventory;
+
+filterLot = DATA LOCAL Lot ();
+
+idFilterLot '{ID}' = id(filterLot());
+nameVendorFilterLot 'Vendor' = nameVendor(filterLot());
+nameProductFilterLot 'Product' = nameProduct(filterLot());
+nameLocationsFilterLot 'Locations' = OVERRIDE locations(filterLot()), (GROUP CONCAT name(location(Location l, product(filterLot()))) IF location(l, product(filterLot())), ', ' ORDER l);
+
+FORM imeiMobile 'IMEI'
+    PROPERTIES() barcodeNumeric ON CHANGE {
+        INPUT bn = NUMERIC DO
+            FOR STRING b = STRING(bn) DO
+                FOR Lot l = lot(b) DO {
+                    filterLot() <- l;
+                    beep(infoSound(), TRUE);
+                } ELSE {
+                    beep(warningSound(), TRUE);
+                    MESSAGE 'Не найдено указанного IMEI';
+                }
+    }
+    PROPERTIES() idFilterLot
+    PROPERTIES() READONLY nameVendorFilterLot, nameProductFilterLot, nameLocationsFilterLot
+    
+    OBJECTS i = (il = InvLedger, l = Lot)
+    PROPERTIES(il) READONLY class, type, dateTime, number, namePartner,
+                            nameFromLocation, onHandAFromLocation,
+                            nameToLocation, onHandAToLocation
+    PROPERTIES(il, l) READONLY quantity
+    PROPERTIES(il) NEWSESSION EDIT
+    FILTERGROUP activeInv
+        FILTER '{Active}' active(il) DEFAULT
+    FILTERS quantity(il, l) AND l == filterLot()
+;
+
+DESIGN imeiMobile {
+    OBJECTS {
+        class = '';
+        NEW pane {
+            fill = 1;
+            NEW imei {
+                alignment = STRETCH;
+                MOVE PROPERTY(barcodeNumeric()) {
+                    caption = '';
+                    placeholder = 'Введите штрих-код';
+                }
+                MOVE PROPERTY(idFilterLot()) { panelCaptionVertical = TRUE; }
+                MOVE PROPERTY(nameVendorFilterLot()) { panelCaptionVertical = TRUE; }
+                MOVE PROPERTY(nameProductFilterLot()) { panelCaptionVertical = TRUE; }
+                MOVE PROPERTY(nameLocationsFilterLot()) { panelCaptionVertical = TRUE; }
+            }
+            MOVE BOX(i);
+        }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+NAVIGATOR {
+    dashboards {
+        NEW imeiMobile;
+    }
+}
