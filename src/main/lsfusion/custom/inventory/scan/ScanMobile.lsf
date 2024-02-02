@@ -11,10 +11,12 @@ htmlScan '' (ScanLine l) = HTML ('<div>' + (CONCAT '&nbsp;',
     '<b>' + string(l) + '</b>',
     '<i>' + description(l) + '</i>') + '</div>');
 
+htmlCountLines '' (Scan s) = HTML (CONCAT '&nbsp;', '<font size="-1">Отсканировано</font>', '<font size="2"><b>' + countLines(s) + '</b></font>');
+
 // Форма сканирования
 FORM scanMobile
     OBJECTS s = Scan PANEL
-    PROPERTIES(s) READONLY htmlScan
+    PROPERTIES(s) READONLY htmlScan, htmlCountLines
 
     OBJECTS l = ScanLine
     PROPERTIES(l) READONLY htmlScan
@@ -35,7 +37,13 @@ DESIGN scanMobile {
         
         NEW lines {
             fill = 1;
-            caption = badged('Отсканировано', countLines(s));
+            caption = '';
+            MOVE PROPERTY(htmlCountLines(s)) {
+                caption = '';
+                alignment = STRETCH;
+                focusable = FALSE;
+                valueAlignment = END;
+            }
             MOVE GRID(l) {
                 PROPERTY(htmlScan(l)) { valueClass = 'myclass'; }
             }
