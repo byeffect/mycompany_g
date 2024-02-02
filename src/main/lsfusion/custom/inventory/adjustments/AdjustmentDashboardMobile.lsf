@@ -183,6 +183,19 @@ EXTEND FORM adjustmentDashboard
             IF location(b) THEN {
                 SEEK adjustmentDashboard.l = location(b);
                 beep(infoSound(), TRUE);
+                NEWSESSION {
+                    FOR Adjustment a == (GROUP MAX Adjustment r IF status(r) == AdjustmentStatus.inProgress AND location(r) == location(b)) DO {
+                        edit(a);
+                    } ELSE FOR Adjustment a == (GROUP MAX Adjustment r IF status(r) == AdjustmentStatus.draft AND location(r) == location(b)) DO {
+                        inProgress(a) <- TRUE;
+                        APPLY;
+    
+                        IF NOT canceled() THEN edit(a);
+                    } ELSE {
+                        beep(warningSound(), TRUE);
+                        MESSAGE 'По заданному месту хранения нет активных инвентаризаций';
+                    }
+                }
             } ELSE {
                 beep(warningSound(), TRUE);
                 MESSAGE 'Не найдено указанного места хранения';
