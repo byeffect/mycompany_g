@@ -1,0 +1,78 @@
+MODULE Scan;
+
+REQUIRE InventorySettings, Doc;
+
+NAMESPACE Inventory;
+
+CLASS Scan 'Сканирование';
+
+@defineNumber(scan, 'Scans', 'SC');
+
+user = DATA User (Scan);
+nameUser 'Пользователь' (Scan s) = name(user(s)) IN id;
+user(Scan s) <- currentUser() WHEN SET(s IS Scan);
+
+
+// lines
+CLASS ScanLine 'Строка сканирования';
+scan = DATA Scan (ScanLine) NONULL DELETE INDEXED;
+
+user = DATA CustomUser (ScanLine);
+nameUser 'Пользователь' (ScanLine s) = name(user(s)) IN id;
+user(ScanLine s) <- currentUser() WHEN SET(s IS ScanLine);
+
+dateTime 'Время' = DATA DATETIME (ScanLine) IN id;
+dateTime(ScanLine s) <- currentDateTime() WHEN SET(s IS ScanLine);
+time 'Время' (ScanLine s) = TIME(dateTime(s));
+
+string 'Строка' = DATA STRING (ScanLine) CHARWIDTH 20;
+
+description 'Описание' = DATA STRING (ScanLine) CHARWIDTH 20;
+
+countLines 'Кол-во строк' (Scan s) = GROUP SUM 1 IF scan(ScanLine l) = s MATERIALIZED;
+
+FORM scan 'Сканирование'
+    OBJECTS s = Scan PANEL
+    PROPERTIES(s) number, nameUser
+
+    OBJECTS l = ScanLine
+    PROPERTIES(l) nameUser, dateTime, string, description
+    PROPERTIES(l) NEW, DELETE        
+    FILTERS scan(l) = s
+   
+    EDIT Scan OBJECT s
+;
+
+DESIGN scan {
+    caption = badged('Сканирование', number(s));
+    OBJECTS {       
+        NEW header {
+            alignment = STRETCH;
+            MOVE PROPERTY(number(s));
+            MOVE PROPERTY(nameUser(s));
+        }
+        NEW lines {
+            fill = 1;
+            caption = 'Строки';
+            MOVE BOX(l) {
+                caption = '';
+            }
+        }
+    }
+}
+
+FORM scans 'Сканирования'
+    OBJECTS s = Scan
+    PROPERTIES(s) READONLYIF isReadonly() number, nameUser, countLines
+    PROPERTIES(s) NEWSESSION NEW, EDIT, DELETE
+;
+
+@extendFormEditable(scans);
+
+@defineDocObjectsForm(scans, s, 'Сканирования');
+
+NAVIGATOR {
+    operations {
+        NEW scans;
+    }
+}

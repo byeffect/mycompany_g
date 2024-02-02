@@ -24,9 +24,10 @@ REQUIRE Eval, ProcessMonitor, Backup,
         AdjustmentCreateCustom,
         InvLedger, InvLedgerItem, InvLedgerLot,
         InventoryReport, InventoryValuation, ProductMoves, InventoryReportLotCustom,
+        Scan,
     
         ReceiptDashboardMobile, SupplierImportGsheets, ShipmentImportGSheets, EmailReport,
         ShipmentDashboardMobile, SchedulerNotification,
-        AdjustmentDashboardMobile, LotMobile,
+        AdjustmentDashboardMobile, LotMobile, ScanDashboardMobile,
 
         ReceiptPlan;

@@ -1,0 +1,56 @@
+MODULE ScanDashboardMobile;
+
+REQUIRE ScanMobile;
+
+NAMESPACE Inventory;
+
+contunue 'Продолжить' (Scan s) {
+    SHOW scanMobile OBJECTS s = s DOCKED NOWAIT;
+} CHANGEMOUSE 'DBLCLK';
+
+create 'Создать' () {
+    NEWSESSION {
+        NEW s = Scan {
+            SHOW scan OBJECTS s = s DOCKED NOWAIT;
+        }
+    }
+}
+
+FORM scanDashboard 'Сканирование'
+    OBJECTS s = Scan
+    PROPERTIES(s) READONLY htmlScan, countLines
+    PROPERTIES(s) contunue
+    PROPERTIES() create
+;
+
+DESIGN scanDashboard {
+    OBJECTS {
+        class = '';
+        NEW scans {
+            fill = 1;
+            MOVE GRID(s) {
+                PROPERTY(htmlScan(s)) { caption = ''; }
+                PROPERTY(countLines(s)) { charWidth = 4; }
+            }
+            NEW actions {
+                alignment = STRETCH;
+                horizontal = TRUE;
+                MOVE PROPERTY(contunue(s)) { fill = 1; }
+                MOVE PROPERTY(create()) { fill = 1; }
+            }
+            REMOVE BOX(s);
+        }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+NAVIGATOR {
+    dashboards {
+        NEW scanDashboard;
+    }
+}
+
+showMobileForms() + {
+    IF permit(currentUser(), navigatorElementCanonicalName('Inventory.scanDashboard')) THEN
+        SHOW scanDashboard NOWAIT;
+}

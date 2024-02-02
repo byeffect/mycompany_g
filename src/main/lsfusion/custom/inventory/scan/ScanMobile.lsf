@@ -1,0 +1,83 @@
+MODULE ScanMobile;
+
+REQUIRE Scan, Package, InventoryCustom, Mobile, Icon, Sound;
+
+NAMESPACE Inventory;
+
+htmlScan '' (Scan s) = HTML (CONCAT '&nbsp;', '<font size="-2">' + number(s) + '</font>', '<font size="-1">' + nameUser(s) + '</font>');
+htmlScan '' (ScanLine l) = HTML ('<div>' + (CONCAT '&nbsp;',
+    time(l),
+    nameUser(l),
+    '<b>' + string(l) + '</b>',
+    '<i>' + description(l) + '</i>') + '</div>');
+
+// Форма сканирования
+FORM scanMobile
+    OBJECTS s = Scan PANEL
+    PROPERTIES(s) READONLY htmlScan
+
+    OBJECTS l = ScanLine
+    PROPERTIES(l) READONLY htmlScan
+    PROPERTIES(l) NEWSESSION deleteScanLine = DELETE
+    FILTERS scan(l) = s
+;
+
+DESIGN scanMobile {
+    caption = badged('', number(s));
+    OBJECTS {
+        class = '';
+        MOVE PROPERTY(htmlScan(s)) {
+            caption = '';
+            alignment = STRETCH;
+            focusable = FALSE;
+        }
+        REMOVE BOX(s);
+        
+        NEW lines {
+            fill = 1;
+            caption = badged('Отсканировано', countLines(s));
+            MOVE GRID(l) {
+                PROPERTY(htmlScan(l)) { valueClass = 'myclass'; }
+            }
+            REMOVE BOX(l);
+            MOVE PROPERTY(deleteScanLine) { alignment = STRETCH; }
+        }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+// scan
+scanBarcode(Scan s) {
+    INPUT b = STRING DO {
+        NEWSESSION {
+            IF (GROUP SUM 1 IF scan(ScanLine l) = s AND string(l) = b) THEN {
+                beep(warningSound(), TRUE);
+                ASK 'Уже есть строка сканирования с содержимым ' + b + '. Создать повторно?' DO {} ELSE {
+                    SEEK scanMobile.l = (GROUP MIN ScanLine l IF scan(l) = s AND string(l) = b);
+                    RETURN;
+                }
+            }
+            NEW l = ScanLine {
+                scan(l) <- s;
+                string(l) <- b;
+                description(l) <- description(GROUP MIN Package p IF reference(p) = b);
+                SEEK scanMobile.l = l;
+            }
+            APPLY;
+            IF NOT canceled() THEN beep(successSound(), TRUE);
+        }
+    }
+}
+
+EXTEND FORM scanMobile
+    PROPERTIES() barcode ON CHANGE scanBarcode(s)
+;
+DESIGN scanMobile {
+    OBJECTS {
+        MOVE PROPERTY(barcode()) AFTER PROPERTY(htmlScan(s)) {
+            caption = '';
+            placeholder = 'Введите штрих-код';
+            alignment = STRETCH;
+        }
+    }
+}
