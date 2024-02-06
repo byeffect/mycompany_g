@@ -1,6 +1,6 @@
 MODULE LotMobile;
 
-REQUIRE LotCustom, InventoryCustom, Sound, LocationProduct, Mobile;
+REQUIRE LotCustom, InventoryCustom, Sound, LocationProduct, Mobile, ProductModel;
 
 NAMESPACE Inventory;
 
@@ -13,6 +13,7 @@ htmlInvLedger '' (InvLedger il) = HTML ('<div>' + (CONCAT '&nbsp;',
     '<font size="-1">' + '->' + nameToLocation(il) + '</font>') + '</div>');
 
 nameLocations 'Locations' (Lot l) = nameLocations(product(l));
+idDefaultModel 'SKU' (Lot l) = idDefaultModel(product(l));
 
 FORM imeiMobile 'IMEI'
     OBJECTS l = Lot NULL PANEL
@@ -27,7 +28,7 @@ FORM imeiMobile 'IMEI'
             }
         }
     }
-    PROPERTIES(l) READONLY id, nameVendor, nameProduct, nameLocations 
+    PROPERTIES(l) READONLY id, nameVendor, idDefaultModel, nameProduct, nameLocations 
     
     OBJECTS il = InvLedger
     PROPERTIES READONLY 
@@ -48,6 +49,7 @@ DESIGN imeiMobile {
                 }
                 MOVE PROPERTY(nameProduct(l)) { caption = ''; fontSize = 24; focusable = FALSE; }
                 MOVE PROPERTY(id(l)) { focusable = FALSE; }
+                MOVE PROPERTY(idDefaultModel(l)) { focusable = FALSE; }
                 MOVE PROPERTY(nameVendor(l)) { focusable = FALSE; }
                 MOVE PROPERTY(nameLocations(l)) { focusable = FALSE; }
             }

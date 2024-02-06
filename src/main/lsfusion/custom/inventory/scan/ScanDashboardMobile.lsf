@@ -11,7 +11,8 @@ contunue 'Продолжить' (Scan s) {
 create 'Создать' () {
     NEWSESSION {
         NEW s = Scan {
-            SHOW scan OBJECTS s = s DOCKED NOWAIT;
+            APPLY;
+            SHOW scanMobile OBJECTS s = s DOCKED NOWAIT;
         }
     }
 }
@@ -21,6 +22,7 @@ FORM scanDashboard 'Сканирование'
     PROPERTIES(s) READONLY htmlScan, countLines
     PROPERTIES(s) contunue
     PROPERTIES() create
+    FILTERS NOT isClosed(s)
 ;
 
 DESIGN scanDashboard {

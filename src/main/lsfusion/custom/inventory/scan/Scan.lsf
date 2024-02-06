@@ -11,6 +11,7 @@ CLASS Scan 'Сканирование';
 user = DATA User (Scan);
 nameUser 'Пользователь' (Scan s) = name(user(s)) IN id;
 user(Scan s) <- currentUser() WHEN SET(s IS Scan);
+isClosed 'Закрыт' = DATA BOOLEAN (Scan);
 
 
 // lines
@@ -31,9 +32,11 @@ description 'Описание' = DATA STRING (ScanLine) CHARWIDTH 20;
 
 countLines 'Кол-во строк' (Scan s) = GROUP SUM 1 IF scan(ScanLine l) = s MATERIALIZED;
 
+dateTimeBegin 'Дата начала' (Scan s)= GROUP MIN dateTime(ScanLine l) BY scan(l);
+
 FORM scan 'Сканирование'
     OBJECTS s = Scan PANEL
-    PROPERTIES(s) number, nameUser
+    PROPERTIES(s) number, nameUser, isClosed
 
     OBJECTS l = ScanLine
     PROPERTIES(l) nameUser, dateTime, string, description
@@ -50,6 +53,7 @@ DESIGN scan {
             alignment = STRETCH;
             MOVE PROPERTY(number(s));
             MOVE PROPERTY(nameUser(s));
+            MOVE PROPERTY(isClosed(s));
         }
         NEW lines {
             fill = 1;
@@ -63,7 +67,9 @@ DESIGN scan {
 
 FORM scans 'Сканирования'
     OBJECTS s = Scan
-    PROPERTIES(s) READONLYIF isReadonly() number, nameUser, countLines
+    PROPERTIES(s) READONLYIF isReadonly() number, nameUser, countLines, dateTimeBegin, isClosed
+    FILTERGROUP status
+        FILTER 'Открытые' NOT isClosed(s) DEFAULT
     PROPERTIES(s) NEWSESSION NEW, EDIT, DELETE
 ;
 
