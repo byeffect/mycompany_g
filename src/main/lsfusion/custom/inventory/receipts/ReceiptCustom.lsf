@@ -25,3 +25,12 @@ EXTEND FORM receipt
     PROPERTIES (l) READONLY idDefaultModelProduct AFTER nameProduct(l)
     PROPERTIES (itm) READONLY idDefaultModel FIRST 
 ;
+
+defaultVendor = DATA Partner (ReceiptType);
+nameDefaultVendor 'Vendor' (ReceiptType o) = name(defaultVendor(o));
+
+EXTEND FORM receiptType
+    PROPERTIES(o) nameDefaultVendor
+;
+
+WHEN (SETCHANGED(type(Receipt r)) OR CHANGED(vendor(r))) AND defaultVendor(type(r)) AND NOT vendor(r) DO vendor(r) <- defaultVendor(type(r));
