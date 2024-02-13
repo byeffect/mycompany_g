@@ -1,6 +1,6 @@
 MODULE ScanMobile;
 
-REQUIRE Scan, Package, InventoryCustom, Mobile, Icon, Sound;
+REQUIRE Scan, Receipt, InventoryCustom, Mobile, Icon, Sound;
 
 NAMESPACE Inventory;
 
@@ -54,6 +54,8 @@ DESIGN scanMobile {
     REMOVE TOOLBARBOX;
 }
 
+description 'Описание' (Receipt r) = CONCAT ' ', nameVendor(r), id(vendor(r)), 'кол-во строк ' + countLines(r);
+
 // scan
 scanBarcode(Scan s) {
     INPUT b = STRING DO {
@@ -68,7 +70,7 @@ scanBarcode(Scan s) {
             NEW l = ScanLine {
                 scan(l) <- s;
                 string(l) <- b;
-                description(l) <- description(GROUP MIN Package p IF reference(p) = b);
+                description(l) <- description(GROUP MIN Receipt r IF vendorReference(r) = b);
                 SEEK scanMobile.l = l;
             }
             APPLY;
