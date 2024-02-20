@@ -1,6 +1,6 @@
 MODULE SupplierImportGsheets;
 
-REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot, ReceiptPlan;
+REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot, ReceiptPlan, Messenger;
 
 NAMESPACE Inventory;
 
@@ -12,6 +12,11 @@ EXTEND FORM integrationData
     PROPERTIES (serviceAccount) isDefault
 ;
 defaultAccount = GROUP MAX ServiceGoogleAccount a IF isDefault(a);
+
+chat = DATA Chat ();
+nameChat 'Чат для уведомлений' = name(chat());
+
+toNotify 'Отправлять уведомление' = DATA BOOLEAN ();
 
 //импорт тваров ghseets
 idImportItemsGsheets 'ID таблицы импорта товаров' = DATA STRING ();
@@ -87,6 +92,19 @@ importSupplier2 'Импорт данных поставщика 2'(){
         IMPORT CSV ','  NOHEADER FROM resultFile() TO imei, model, techName, date, box, dateBox;
         FOR [GROUP MAX INTEGER i BY model(i)](STRING[100] model) AND NOT model(model) NEW m = Model DO{
             id(m) <- model;
+        }
+
+        IF toNotify() AND chat() THEN {
+            LOCAL msg = STRING ();
+            //сообщение о ненайденных Product
+            msg() <- (GROUP CONCAT STRING model IF [GROUP MAX INTEGER i BY model(i)](model) AND NOT productModel(model), '\n' ORDER model);
+            IF msg() THEN sendMessage(chat(), (CONCAT '\n', 'Импорт поставщика 2, таблица Поставщик 2', 'Не найден SKU:', msg()));
+            //сообщение о повторных IMEI
+            msg() <- (GROUP CONCAT STRING imei IF [GROUP SUM 1 BY imei(INTEGER i)](imei) > 1, '\n' ORDER imei);
+            IF msg() THEN sendMessage(chat(), (CONCAT '\n', 'Импорт поставщика 2, таблица Поставщик 2', 'Найдены дублирующие IMEI:', msg()));
+            //сообщение о движении IMEI
+            msg() <- (GROUP CONCAT STRING imei IF INTEGER x = [GROUP MAX INTEGER i BY imei(i)](imei) AND Lot lot = lot(imei) AND (GROUP SUM 1 IF quantity(InvLedger il, lot) AND NOT line[ReceiptInvLedger](il) == line(receiptVendor(box(x)), product(lot))), '\n' ORDER imei);
+            IF msg() THEN sendMessage(chat(), (CONCAT '\n', 'Импорт поставщика 2, таблица Поставщик 2', 'Найдено движение IMEI:', msg()));
         }
 
         FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND NOT lot(imei) AND Product p = productModel(model(x)) NEW l = Lot DO{
@@ -324,6 +342,13 @@ importSupplier1'Импорт поставщика 1'(){
 
     IMPORT CSV ',' NOHEADER FROM resultFile() TO receipt, box, boxId, model, quantity, boxNumber;
 
+    IF toNotify() AND chat() THEN {
+        LOCAL msg = STRING ();
+        //сообщение о ненайденных Product
+        msg() <- (GROUP CONCAT STRING model IF [GROUP MAX INTEGER i BY model(i)](model) AND NOT productModel(model), '\n' ORDER model);
+        IF msg() THEN sendMessage(chat(), (CONCAT '\n', 'Импорт поставщика 1, таблица unite', 'Не найден SKU:', msg()));
+    }
+    
     //создание приемок
     FOR [GROUP MAX INTEGER i BY boxId(i)] (STRING id) AND NOT receiptVendor(id) NEW r = Receipt DO{
         vendorReference(r) <- id;
@@ -365,6 +390,22 @@ importSupplier1'Импорт поставщика 1'(){
 
         IMPORT CSV ',' NOHEADER FROM resultFile() TO receiptColumns, boxColumns, imeiColumns, skuColumns, skuOriginal;
 
+        IF toNotify() AND chat() THEN {
+            LOCAL msg = STRING ();
+            //сообщение о ненайденных Product
+            msg() <- (GROUP CONCAT STRING model IF [GROUP MAX INTEGER i BY skuOriginal(i)](model) AND NOT productModel(model), '\n' ORDER model);
+            IF msg() THEN sendMessage(chat(), (CONCAT '\n', 'Импорт поставщика 1, таблица ' + receipt + '_', 'Не найден SKU:', msg()));
+            //сообщение о повторных IMEI
+            msg() <- (GROUP CONCAT STRING imei IF [GROUP SUM 1 BY imeiColumns(INTEGER i)](imei) > 1, '\n' ORDER imei);
+            IF msg() THEN sendMessage(chat(), (CONCAT '\n', 'Импорт поставщика 1, таблица ' + receipt + '_', 'Найдены дублирующие IMEI:', msg()));
+            //сообщение о несоответствии кол-ва IMEI
+            msg() <- (GROUP CONCAT (CONCAT ' ', STRING box, STRING model, STRING id) IF INTEGER qty = [GROUP SUM quantity(INTEGER j) BY lower(boxNumber(j)), model(j), receipt(j)](box,model,id) AND NOT qty == [GROUP SUM 1 BY lower(boxColumns(INTEGER i)), skuOriginal(i), receiptColumns(i)](box,model,id), '\n' ORDER box,model,id);
+            IF msg() THEN sendMessage(chat(), (CONCAT '\n', 'Импорт поставщика 1, таблица ' + receipt + '_', 'Несоответствие кол-ва:', msg()));
+            //сообщение о движении IMEI
+            msg() <- (GROUP CONCAT STRING imei IF INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](imei) AND Lot lot = lot(imei) AND INTEGER xx = [GROUP MAX INTEGER j BY lower(boxNumber(j)), model(j), receipt(j)](lower(boxColumns(x)), skuOriginal(x), receiptColumns(x)) AND (GROUP SUM 1 IF quantity(InvLedger il, lot) AND NOT line[ReceiptInvLedger](il) == line(receiptVendor(boxId(xx)), product(lot))), '\n' ORDER imei);
+            IF msg() THEN sendMessage(chat(), (CONCAT '\n', 'Импорт поставщика 1, таблица ' + receipt + '_', 'Найдено движение IMEI:', msg()));
+        }
+        
         FOR INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](STRING imei) AND Product p = productModel(skuOriginal(x)) AND
             NOT lot(imei) NEW l = Lot DO {
             id(l) <- imei;
@@ -386,6 +427,7 @@ importSupplier1'Импорт поставщика 1'(){
 
 EXTEND FORM integrationData
     PROPERTIES() importItemsGsheets, importSupplier2, importSupplier1, idImportItemsGsheets, idImportSupplier, idImportSupplier1, idReceiptNL
+    PROPERTIES() toNotify, nameChat
 ;
 
 DESIGN integrationData{
@@ -396,6 +438,8 @@ DESIGN integrationData{
             MOVE PROPERTY (idImportSupplier());
             MOVE PROPERTY (idImportSupplier1());
             MOVE PROPERTY (idReceiptNL());
+            MOVE PROPERTY (toNotify());
+            MOVE PROPERTY (nameChat());
             NEW actionImport{
                 caption = 'Действия';
                 horizontal = TRUE;
