@@ -1,0 +1,134 @@
+MODULE ReceiptReport;
+
+REQUIRE ReceiptLot, ProductModel, LotMobile, LocationProduct, ReceiptFilter;
+
+NAMESPACE Inventory;
+
+FORM receiptReport 'Приемки'
+    OBJECTS d1 = (r1 = Receipt, l = Lot)
+    PROPERTIES READONLY id(l), idDefaultModel(l), nameProduct(l), nameType(r1), nameLocation(r1),
+        scheduledDateTime(r1), executionDateTime(r1), number(r1), vendorReference(r1), nameStatus(r1)
+    FILTERS (GROUP SUM 1 IF initialDemandOrDone(ReceiptLine line, l) AND receipt(line) == r1)
+
+    OBJECTS d2 = (r2 = Receipt, i = Item)
+    PROPERTIES READONLY idDefaultModel(i), name(i), initialDemand(r2,i), done(r2,i)
+    FILTERS (GROUP SUM 1 IF receipt(ReceiptLine line) == r2 AND product(line) == i)
+;
+
+DESIGN receiptReport {
+    OBJECTS {
+        NEW tabbed {
+            fill = 1;
+            tabbed = TRUE;
+            NEW imei {
+                horizontal = TRUE;
+                fill = 1;
+                caption = 'IMEI';
+
+                MOVE BOX(d1) { fill = 1000; }
+                NEW filters1 {
+                    width = 200;
+                    fill = 1;
+                    caption = 'Filters';
+                    alignment = STRETCH;
+                }
+            }
+            NEW sku {
+                horizontal = TRUE;
+                fill = 1;
+                caption = 'SKU';
+
+                MOVE BOX(d2) { fill = 1000; }
+                NEW filters2 {
+                    width = 200;
+                    fill = 1;
+                    caption = 'Filters';
+                    alignment = STRETCH;
+                }
+            }
+        }
+    }
+}
+
+NAVIGATOR {
+    reporting {
+        NEW receiptReport;
+    }
+}
+
+receiptStatus = DATA LOCAL NESTED ReceiptStatus ();
+nameReceiptStatus 'Status' = name(receiptStatus());
+
+EXTEND FORM receiptReport
+    PROPERTIES nameReceiptStatus1 = nameReceiptStatus(), nameReceiptStatus2 = nameReceiptStatus()
+
+    FILTERS status(r1) = receiptStatus() OR NOT receiptStatus()
+    FILTERS status(r2) = receiptStatus() OR NOT receiptStatus()
+;
+
+DESIGN receiptReport {
+    filters1 {
+        MOVE PROPERTY(nameReceiptStatus1) { caption = ''; placeholder = 'Status'; };
+    }
+    filters2 {
+        MOVE PROPERTY(nameReceiptStatus2) { caption = ''; placeholder = 'Status'; };
+    }
+}
+
+EXTEND FORM receiptReport
+    OBJECTS dates = INTERVAL[DATE] BEFORE d1 PANEL NULL
+    PROPERTIES filterDates1 'Date interval' = VALUE(dates), filterDates2 'Date interval' = VALUE(dates)
+
+    FILTERS (NOT scheduledDate(r1) < from(dates) AND NOT scheduledDate(r1) > to(dates)) OR (NOT executionDate(r1) < from(dates) AND NOT executionDate(r1) > to(dates))
+    FILTERS (NOT scheduledDate(r2) < from(dates) AND NOT scheduledDate(r2) > to(dates)) OR (NOT executionDate(r2) < from(dates) AND NOT executionDate(r2) > to(dates))
+
+    FILTERGROUP date1
+        FILTER 'по дате планируемой' (NOT scheduledDate(r1) < from(dates) AND NOT scheduledDate(r1) > to(dates)) DEFAULT
+        FILTER 'по дате приемки' (NOT executionDate(r1) < from(dates) AND NOT executionDate(r1) > to(dates))
+    FILTERGROUP date2
+        FILTER 'по дате планируемой' (NOT scheduledDate(r2) < from(dates) AND NOT scheduledDate(r2) > to(dates)) DEFAULT
+        FILTER 'по дате приемки' (NOT executionDate(r2) < from(dates) AND NOT executionDate(r2) > to(dates))
+;
+
+DESIGN receiptReport {
+    filters1 {
+        MOVE PROPERTY(filterDates1);
+        MOVE FILTERGROUP(date1) { alignment = STRETCH; }
+    }
+    filters2 {
+        MOVE PROPERTY(filterDates2);
+        MOVE FILTERGROUP(date2) { alignment = STRETCH; }
+    }
+}
+
+EXTEND FORM receiptReport
+    PROPERTIES nameReceiptLocation1 = nameReceiptLocation(), nameReceiptLocation2 = nameReceiptLocation()
+
+    FILTERS location(r1) = receiptLocation() OR NOT receiptLocation()
+    FILTERS location(r2) = receiptLocation() OR NOT receiptLocation()
+;
+
+DESIGN receiptReport {
+    filters1 {
+        MOVE PROPERTY(nameReceiptLocation1) { caption = ''; placeholder = 'Location'; };
+    }
+    filters2 {
+        MOVE PROPERTY(nameReceiptLocation2) { caption = ''; placeholder = 'Location'; };
+    }
+}
+
+EXTEND FORM receiptReport
+    PROPERTIES nameShipmentType1 = nameReceiptType(), nameShipmentType2 = nameReceiptType()
+
+    FILTERS type(r1) = receiptType() OR NOT receiptType()
+    FILTERS type(r2) = receiptType() OR NOT receiptType()
+;
+
+DESIGN receiptReport {
+    filters1 {
+        MOVE PROPERTY(nameShipmentType1) { caption = ''; placeholder = 'Type'; };
+    }
+    filters2 {
+        MOVE PROPERTY(nameShipmentType2) { caption = ''; placeholder = 'Type'; };
+    }
+}
