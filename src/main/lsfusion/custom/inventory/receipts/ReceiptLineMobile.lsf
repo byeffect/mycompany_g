@@ -1,0 +1,146 @@
+MODULE ReceiptLineMobile;
+
+REQUIRE ReceiptDone, ReceiptMobile, ReceiptLot, ReceiptLineScan, LotCustom;
+
+NAMESPACE Inventory;
+
+receiptLine 'Принимать построчно' = DATA BOOLEAN (ReceiptType);
+EXTEND FORM receiptType PROPERTIES(o) receiptLine;
+
+receiptLine 'Прием построчно' = DATA BOOLEAN (Receipt);
+
+htmlReceiptLine '' (ReceiptLine l) = HTML ('<div>' + (CONCAT '&nbsp;',
+    time(l),
+    nameUser(l),
+    '<b>' + nameProduct(l) + '</b>',
+    '<font size="-2">' + lotsDone(l) + '</font>',
+    '<u>' + locationsPutAway(l) + '</u>') + '</div>');
+
+FORM receiptLine 'Возврат'
+    OBJECTS l = Location PANEL
+    PROPERTIES(l) name SELECTOR
+    
+    OBJECTS rt = ReceiptType PANEL
+    PROPERTIES(rt) name SELECTOR
+    FILTERS receiptLine(rt)
+    
+    OBJECTS rl = ReceiptLine
+    PROPERTIES(rl) READONLY htmlReceiptLine
+    PROPERTIES(rl) NEWSESSION deleteLine = DELETE
+    
+    FILTERS type(rl) = rt,
+            receiptLine(receipt(rl))
+    
+    FILTERGROUP dates
+        FILTER 'Сегодня' executionDate(rl) = currentDate() DEFAULT
+;
+
+DESIGN receiptLine {
+    OBJECTS {
+        class = '';
+        MOVE PROPERTY(name(l)) {
+            caption = '';
+            placeholder = 'Место хранения';
+            alignment = STRETCH;
+            focusable = FALSE;
+        }
+        MOVE PROPERTY(name(rt)) {
+            caption = '';
+            placeholder = 'Тип приемки';
+            alignment = STRETCH;
+            focusable = FALSE;
+        }
+        REMOVE BOX(rt);
+        
+        MOVE FILTERGROUP(dates);
+
+        MOVE GRID(rl);
+        REMOVE BOX(rl);
+        
+        MOVE PROPERTY(deleteLine) { alignment = STRETCH; }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+receipt (Location l, ReceiptType t, DATE d) = GROUP AGGR Receipt r WHERE receiptLine(r) BY location(r), type(r), executionDate(r); 
+
+// scan
+scanBarcode(Location lc, ReceiptType rt, ReceiptLine rl) {
+    INPUT b = STRING DO {
+        IF NOT lot(b) THEN {
+            IF NOT location(b) OR NOT rl THEN {
+                beep(warningSound(), TRUE);
+                IF createLots(rt) THEN {
+                    createLot(b);
+                } ELSE
+                    MESSAGE 'Не найден код партии';
+
+            } ELSE {
+                NEWSESSION APPLY { location(ReceiptPutAway p) <- location(b) WHERE receiptLine(p) = rl; }
+                IF NOT canceled() THEN beep(infoSound(), TRUE);
+            }
+        }
+        IF id(product(lot(b))) = 'initial' THEN {
+            DIALOG selectProduct OBJECTS p INPUT DO
+                IF p THEN NEWSESSION {
+                    product(lot(b)) <- p;
+                    APPLY;
+                }
+        }
+        IF lot(b) AND NOT id(product(lot(b))) = 'initial' THEN {
+            IF GROUP SUM 1 IF done(ReceiptLine l, lot(b)) AND executionDate(l) = currentDate() THEN {
+                beep(warningSound(), TRUE);
+                MESSAGE 'Код партии уже был принят';
+            } ELSE {
+                NEWSESSION {
+                    IF NOT receipt(lc, rt, currentDate()) THEN NEW r = Receipt {
+                        executionDateTime(r) <- currentDateTime();
+                        type(r) <- rt;
+                        location(r) <- lc;
+                        done(r) <- TRUE;
+                        putAway(r) <- TRUE;
+                        receiptLine(r) <- TRUE;
+                    }
+                    NEW l = ReceiptLine {
+                        receipt(l) <- receipt(lc, rt, currentDate());
+                        product(l) <- product(lot(b));
+                        done(l) <- 1;
+                        done(l, lot(b)) <- 1;
+                        NEW pa = ReceiptPutAway {
+                            receiptLine(pa) <- l;
+                            location(pa) <- location(lc, product(l));
+                        }
+
+                        SEEK receiptLine.rl = l;
+                    }
+                    APPLY;
+                    IF NOT canceled() THEN beep(successSound(), TRUE);
+                }
+            }
+        }
+    }
+}
+
+EXTEND FORM receiptLine
+    PROPERTIES() barcode ON CHANGE scanBarcode(l, rt, rl)
+;
+DESIGN receiptLine {
+    OBJECTS {
+        MOVE PROPERTY(barcode()) AFTER PROPERTY(name(rt)) {
+            caption = '';
+            placeholder = 'Введите штрих-код';
+            alignment = STRETCH;
+        }
+    }
+}
+
+NAVIGATOR {
+    dashboards {
+        NEW receiptLine;
+    }
+}
+
+showMobileForms() + {
+    IF permit(currentUser(), navigatorElementCanonicalName('Inventory.receiptLine')) THEN
+        SHOW receiptLine NOWAIT;
+}

@@ -1,0 +1,16 @@
+MODULE ReceiptLineScan;
+
+REQUIRE ReceiptPutAway;
+
+NAMESPACE Inventory;
+
+user = DATA CustomUser (ReceiptLine);
+nameUser 'Пользователь' (ReceiptLine s) = name(user(s));
+user(ReceiptLine s) <- currentUser() WHEN SET(s IS ReceiptLine);
+
+dateTime 'Время' = DATA DATETIME (ReceiptLine);
+dateTime(ReceiptLine s) <- currentDateTime() WHEN SET(s IS ReceiptLine);
+time 'Время' (ReceiptLine s) = TIME(dateTime(s));
+
+locationsPutAway 'Место хранения' (ReceiptLine l) = 
+    GROUP CONCAT nameLocation(ReceiptPutAway p) IF receiptLine(p) = l, ',' ORDER p; 
