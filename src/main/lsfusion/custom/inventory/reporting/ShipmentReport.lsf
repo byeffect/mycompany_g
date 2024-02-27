@@ -1,0 +1,151 @@
+MODULE ShipmentReport;
+
+REQUIRE ShipmentLot, ProductModel, LotMobile, LocationProduct, ShipmentFilter;
+
+NAMESPACE Inventory;
+
+FORM shipmentReport 'Отгрузки'
+    OBJECTS d1 = (s1 = Shipment, l = Lot)
+    PROPERTIES READONLY id(l), idDefaultModel(l), nameProduct(l), nameType(s1), nameLocation(s1), nameToLocation(s1),
+               scheduledDateTime(s1), executionDateTime(s1), number(s1), nameStatus(s1)
+    FILTERS (GROUP SUM done(ShipmentLine line, l) IF shipment(line) == s1)
+    
+    OBJECTS d2 = (s2 = Shipment, i = Item)
+    PROPERTIES READONLY idDefaultModel(i), name(i), initialDemand(s2,i), done(s2,i)
+    FILTERS (GROUP SUM 1 IF shipment(ShipmentLine line) == s2 AND product(line) == i)
+;
+
+DESIGN shipmentReport {
+    OBJECTS {
+        NEW tabbed {
+            fill = 1;
+            tabbed = TRUE;
+            NEW imei {
+                horizontal = TRUE;
+                fill = 1;
+                caption = 'IMEI';
+
+                MOVE BOX(d1) { fill = 1000; }
+                NEW filters1 {
+                    width = 200;
+                    fill = 1;
+                    caption = 'Filters';
+                    alignment = STRETCH;
+                }
+            }
+            NEW sku {
+                horizontal = TRUE;
+                fill = 1;
+                caption = 'SKU';
+
+                MOVE BOX(d2) { fill = 1000; }
+                NEW filters2 {
+                    width = 200;
+                    fill = 1;
+                    caption = 'Filters';
+                    alignment = STRETCH;
+                }
+            }
+        }
+    }
+}
+
+NAVIGATOR {
+    reporting {
+        NEW shipmentReport;
+    }
+}
+
+shipmentStatus = DATA LOCAL NESTED ShipmentStatus ();
+nameShipmentStatus 'Status' = name(shipmentStatus());
+
+EXTEND FORM shipmentReport
+    PROPERTIES nameShipmentStatus1 = nameShipmentStatus(), nameShipmentStatus2 = nameShipmentStatus()
+
+    FILTERS status(s1) = shipmentStatus() OR NOT shipmentStatus()
+    FILTERS status(s2) = shipmentStatus() OR NOT shipmentStatus()
+;
+
+DESIGN shipmentReport {
+    filters1 {
+        MOVE PROPERTY(nameShipmentStatus1) { caption = ''; placeholder = 'Status'; };
+    }
+    filters2 {
+        MOVE PROPERTY(nameShipmentStatus2) { caption = ''; placeholder = 'Status'; };
+    }
+}
+
+EXTEND FORM shipmentReport
+    OBJECTS dates = INTERVAL[DATE] BEFORE d1 PANEL NULL
+    PROPERTIES filterDates1 'Date interval' = VALUE(dates), filterDates2 'Date interval' = VALUE(dates)
+    
+    FILTERS (NOT scheduledDate(s1) < from(dates) AND NOT scheduledDate(s1) > to(dates)) OR (NOT executionDate(s1) < from(dates) AND NOT executionDate(s1) > to(dates))
+    FILTERS (NOT scheduledDate(s2) < from(dates) AND NOT scheduledDate(s2) > to(dates)) OR (NOT executionDate(s2) < from(dates) AND NOT executionDate(s2) > to(dates))
+
+    FILTERGROUP date1
+        FILTER 'по дате планируемой' (NOT scheduledDate(s1) < from(dates) AND NOT scheduledDate(s1) > to(dates)) DEFAULT
+        FILTER 'по дате приемки' (NOT executionDate(s1) < from(dates) AND NOT executionDate(s1) > to(dates))
+    FILTERGROUP date2
+        FILTER 'по дате планируемой' (NOT scheduledDate(s2) < from(dates) AND NOT scheduledDate(s2) > to(dates)) DEFAULT
+        FILTER 'по дате приемки' (NOT executionDate(s2) < from(dates) AND NOT executionDate(s2) > to(dates))
+;
+
+DESIGN shipmentReport {
+    filters1 {
+        MOVE PROPERTY(filterDates1);
+        MOVE FILTERGROUP(date1) { alignment = STRETCH; }
+    }
+    filters2 {
+        MOVE PROPERTY(filterDates2);
+        MOVE FILTERGROUP(date2) { alignment = STRETCH; }
+    }
+}
+
+EXTEND FORM shipmentReport
+    PROPERTIES nameShipmentLocation1 = nameShipmentLocation(), nameShipmentLocation2 = nameShipmentLocation()
+
+    FILTERS location(s1) = shipmentLocation() OR NOT shipmentLocation()
+    FILTERS location(s2) = shipmentLocation() OR NOT shipmentLocation()
+;
+
+DESIGN shipmentReport {
+    filters1 {
+        MOVE PROPERTY(nameShipmentLocation1) { caption = ''; placeholder = 'Location'; };
+    }
+    filters2 {
+        MOVE PROPERTY(nameShipmentLocation2) { caption = ''; placeholder = 'Location'; };
+    }
+}
+
+
+EXTEND FORM shipmentReport
+    PROPERTIES nameShipmentToLocation1 = nameShipmentToLocation(), nameShipmentToLocation2 = nameShipmentToLocation()
+
+    FILTERS toLocation(s1) = shipmentToLocation() OR NOT shipmentToLocation()
+    FILTERS toLocation(s2) = shipmentToLocation() OR NOT shipmentToLocation()
+;
+
+DESIGN shipmentReport {
+    filters1 {
+        MOVE PROPERTY(nameShipmentToLocation1) { caption = ''; placeholder = 'Destination'; };
+    }
+    filters2 {
+        MOVE PROPERTY(nameShipmentToLocation2) { caption = ''; placeholder = 'Destination'; };
+    }
+}
+
+EXTEND FORM shipmentReport
+    PROPERTIES nameShipmentType1 = nameShipmentType(), nameShipmentType2 = nameShipmentType()
+
+    FILTERS type(s1) = shipmentType() OR NOT shipmentType()
+    FILTERS type(s2) = shipmentType() OR NOT shipmentType()
+;
+
+DESIGN shipmentReport {
+    filters1 {
+        MOVE PROPERTY(nameShipmentType1) { caption = ''; placeholder = 'Type'; };
+    }
+    filters2 {
+        MOVE PROPERTY(nameShipmentType2) { caption = ''; placeholder = 'Type'; };
+    }
+}

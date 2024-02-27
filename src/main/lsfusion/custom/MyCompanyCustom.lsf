@@ -27,7 +27,7 @@ REQUIRE Eval, ProcessMonitor, Backup,
         Scan,
     
         ReceiptDashboardMobile, SupplierImportGsheets, ShipmentImportGSheets, EmailReport,
-        ShipmentDashboardMobile, SchedulerNotification,
+        ShipmentDashboardMobile, SchedulerNotification, ShipmentReport,
         AdjustmentDashboardMobile, LotMobile, ScanDashboardMobile,
 
         ReceiptPlan;
