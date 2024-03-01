@@ -14,6 +14,7 @@ htmlReceiptLine '' (ReceiptLine l) = HTML ('<div>' + (CONCAT '&nbsp;',
     nameUser(l),
     '<b>' + nameProduct(l) + '</b>',
     '<font size="-2">' + lotsDone(l) + '</font>',
+    '(' + idDefaultModel(product(l)) + ')',
     '<u>' + locationsPutAway(l) + '</u>') + '</div>');
 
 FORM receiptLine 'Возврат'

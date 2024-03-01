@@ -1,6 +1,6 @@
 MODULE LotCustom;
 
-REQUIRE Lot, PartnerPurchase, ReceiptLot;
+REQUIRE Lot, PartnerPurchase, ReceiptLot, ProductModel;
 
 NAMESPACE Inventory;
 
@@ -37,12 +37,12 @@ EXTEND FORM lots
 
 FORM selectProduct 'Выберите товар'
     OBJECTS p = Product PANEL NULL
-    PROPERTIES(p) '' = name SELECTOR
+    PROPERTIES(p) '' = idDefaultModel SELECTOR
 ;
 
 DESIGN selectProduct {
     OBJECTS {
-        MOVE PROPERTY(name(p)) { fill = 1; }
+        MOVE PROPERTY(idDefaultModel(p)) { fill = 1; }
         REMOVE PROPERTY(formRefresh());
     }
 }
