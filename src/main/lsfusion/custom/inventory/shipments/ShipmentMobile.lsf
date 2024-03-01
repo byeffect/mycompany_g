@@ -1,20 +1,27 @@
 MODULE ShipmentMobile;
 
-REQUIRE ShipmentDone, ShipmentLot, PackageLot, ShipmentScan, LocationProduct, InventoryCustom, Mobile, Icon, Sound;
+REQUIRE ShipmentDone, ShipmentLot, PackageLot, ShipmentScan, LocationProduct, InventoryCustom, Mobile, Icon, Sound, ProductModel;
 
 NAMESPACE Inventory;
+
+idDefaultModelProduct 'SKU' (ShipmentLine l) = idDefaultModel(product(l));
+
+EXTEND FORM shipment
+    PROPERTIES (l) READONLY idDefaultModelProduct AFTER nameProduct(l)
+;
 
 readonlyShipment = DATA LOCAL BOOLEAN ();
 
 htmlShipment '' (Shipment r) = HTML (CONCAT '&nbsp;', '<b>' + customerReference(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameCustomer(r) + '</font>');
 
-htmlShipment '' (ShipmentLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<i>' + nameLocation(location(l), product(l)) + '</i>', '<font size="-2">(' + locations(location(l), product(l)) + ')</font>') + '</div>');
+htmlShipment '' (ShipmentLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '(' + idDefaultModelProduct(l) + ')', '<i>' + nameLocation(location(l), product(l)) + '</i>', '<font size="-2">(' + locations(location(l), product(l)) + ')</font>') + '</div>');
 
 htmlShipment '' (ShipmentScan l) = HTML ('<div>' + (CONCAT '&nbsp;',
     time(l),
     nameUser(l),
     '<b>' + nameProduct(l) + '</b>',
     '<font size="-2">' + idLot(l) + '</font>',
+    '(' + idDefaultModel(product(l)) + ')',
     '<u>' + nameLocation(l) + '</u>') + '</div>');
 
 notShippedOn 'Не отгруженые' = DATA LOCAL NESTED BOOLEAN ();

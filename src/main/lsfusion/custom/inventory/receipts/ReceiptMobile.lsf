@@ -12,13 +12,14 @@ htmlReceipt '' (ReceiptLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameP
 
 htmlReceipt '' (PackageLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + idLot(l) + '</font>') + '</div>');
 
-htmlReceipt '' (Lot l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + id(l) + '</font>') + '</div>');
+htmlReceipt '' (Lot l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + id(l) + '</font>', '(' + idDefaultModelProduct(l) + ')') + '</div>');
 
 htmlReceipt '' (ReceiptScan l) = HTML ('<div>' + (CONCAT '&nbsp;',
     time(l),
     nameUser(l),
     '<b>' + nameProduct(l) + '</b>',
     '<font size="-2">' + idLot(l) + '</font>',
+    '(' + idDefaultModel(product(l)) + ')',
     '<i>' + referencePackage(l) + '</i>',
     '<u>' + nameLocation(l) + '</u>') + '</div>');
 

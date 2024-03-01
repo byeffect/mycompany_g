@@ -1,0 +1,11 @@
+MODULE PackageCustom;
+
+REQUIRE Package, ProductModel;
+
+NAMESPACE Inventory;
+
+idDefaultModelProduct 'SKU' (PackageLine l) = idDefaultModel(product(l));
+
+EXTEND FORM package
+    PROPERTIES (l) READONLY idDefaultModelProduct AFTER nameProduct(l)
+;

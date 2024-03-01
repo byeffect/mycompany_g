@@ -4,16 +4,23 @@ REQUIRE AdjustmentDone, AdjustmentLot, PackageLot, AdjustmentScan, LocationProdu
 
 NAMESPACE Inventory;
 
+idDefaultModelProduct 'SKU' (AdjustmentLine l) = idDefaultModel(product(l));
+
+EXTEND FORM adjustment
+    PROPERTIES (l) READONLY idDefaultModelProduct AFTER nameProduct(l)
+;
+
 readonlyAdjustment = DATA LOCAL BOOLEAN ();
 
 htmlAdjustment '' (Adjustment r) = HTML (CONCAT '&nbsp;', '<b>' + nameLocation(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(date(r), 'DD/MM'));
 
-htmlAdjustment '' (Adjustment r, Lot l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + id(l) + '</font>', '<i>' + nameLocation(location(r), product(l)) + '</i>', '<font size="-2">(' + locations(location(r), product(l)) + ')</font>') + '</div>');
+htmlAdjustment '' (Adjustment r, Lot l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + id(l) + '</font>', '(' + idDefaultModelProduct(l) + ')', '<i>' + nameLocation(location(r), product(l)) + '</i>', '<font size="-2">(' + locations(location(r), product(l)) + ')</font>') + '</div>');
 
 htmlAdjustment '' (AdjustmentScan l) = HTML ('<div>' + (CONCAT '&nbsp;',
     time(l),
     nameUser(l),
     '<b>' + nameProduct(l) + '</b>',
+    '(' + idDefaultModel(product(l)) + ')',
     '<font size="-2">' + idLot(l) + '</font>'));
 
 notAdjustedOn 'Не найденные' = DATA LOCAL NESTED BOOLEAN ();
