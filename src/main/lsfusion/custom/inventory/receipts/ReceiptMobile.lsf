@@ -4,6 +4,39 @@ REQUIRE ReceiptDone, ReceiptPackage, ReceiptLot, PackageLot, ReceiptScan, Invent
 
 NAMESPACE Inventory;
 
+//Логика брака
+useDefects 'Брак' = DATA BOOLEAN (ReceiptType);
+
+defectLocation 'Мето хранения брака' = DATA Location (ReceiptType);
+nameDefectLocation 'Мето хранения брака' (ReceiptType t)  = name(defectLocation(t));
+
+EXTEND FORM receiptType
+    PROPERTIES(o) useDefects, nameDefectLocation
+;
+
+isDefect 'Брак' = DATA BOOLEAN (ReceiptScan);
+useDefects (ReceiptScan s) = useDefects(type(receipt(s)));
+defectLocation (ReceiptScan s) = defectLocation(type(receipt(s)));
+
+markAsDefect 'Брак' (ReceiptScan s) {
+    NEWSESSION {
+        isDefect(s) <- TRUE;
+        location(s) <- defectLocation(s) WHERE defectLocation(s);
+
+        APPLY;
+    }
+} CONFIRM;
+
+unmarkAsDefect 'Не брак' (ReceiptScan s) {
+    NEWSESSION {
+        isDefect(s) <- NULL;
+        location(s) <- location(location(receipt(s)), product(s));
+
+        APPLY;
+    }
+} CONFIRM;
+
+
 readonlyReceipt = DATA LOCAL BOOLEAN ();
 
 htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + vendorReference(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameVendor(r) + '</font>');
@@ -35,8 +68,10 @@ FORM receiptMobile
     FILTERS in(r, p)
 
     OBJECTS s = ReceiptScan
-    PROPERTIES(s) READONLY htmlReceipt
+    PROPERTIES(s) READONLY htmlReceipt BACKGROUND RGB(255,212,212) IF isDefect(s)
     PROPERTIES(s) READONLY nameLocation PANEL
+    PROPERTIES(s) markAsDefect SHOWIF (useDefects(s) AND NOT isDefect(s) AND NOT readonlyReceipt())
+    PROPERTIES(s) unmarkAsDefect SHOWIF (useDefects(s) AND isDefect(s) AND NOT readonlyReceipt())
     PROPERTIES(s) NEWSESSION deleteScan = DELETE SHOWIF NOT readonlyReceipt()
     FILTERS receipt(s) = r
 
@@ -87,7 +122,13 @@ DESIGN receiptMobile {
                     PROPERTY(htmlReceipt(r)) { valueClass = 'myclass'; }
                 }
                 REMOVE BOX(s);
-                MOVE PROPERTY(deleteScan) { alignment = STRETCH; }
+                NEW actions {
+                    alignment = STRETCH;
+                    horizontal = TRUE;
+                    MOVE PROPERTY(markAsDefect(s)) { fill = 1; }
+                    MOVE PROPERTY(unmarkAsDefect(s)) { fill = 1; }
+                    MOVE PROPERTY(deleteScan) { fill = 1; }
+                }
             }
             NEW packageContent {
                 showIf = countPackages(r);
