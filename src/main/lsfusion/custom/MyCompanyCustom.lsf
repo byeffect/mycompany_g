@@ -32,4 +32,7 @@ REQUIRE Eval, ProcessMonitor, Backup,
         ShipmentDashboardMobile, SchedulerNotification, ReceiptReport, ShipmentReport,
         AdjustmentDashboardMobile, LotMobile, ScanDashboardMobile,
 
+        InvoiceShipment, SalesLedgerInvoiceShipment, SalesLedgerAccountInvoice,
+        SalesLedgerReport, SalesLedgerAccountReport,
+
         ReceiptPlan;
