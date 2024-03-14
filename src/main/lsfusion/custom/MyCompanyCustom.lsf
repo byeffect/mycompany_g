@@ -33,6 +33,6 @@ REQUIRE Eval, ProcessMonitor, Backup,
         AdjustmentDashboardMobile, LotMobile, ScanDashboardMobile,
 
         InvoiceShipment, SalesLedgerInvoiceShipment, SalesLedgerAccountInvoice,
-        SalesLedgerReport, SalesLedgerAccountReport,
+        SalesLedgerReport, SalesLedgerAccountReport, InvoiceImportGSheets,
 
         ReceiptPlan;

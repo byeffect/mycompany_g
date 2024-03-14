@@ -1,0 +1,119 @@
+MODULE InvoiceImportGSheets;
+
+REQUIRE ShipmentImportGSheets, Invoice;
+
+NAMESPACE Invoicing;
+
+customerReference '{Customer_reference}' = DATA STRING[30] (InvoiceLine) INDEXED;
+
+EXTEND FORM invoice
+    PROPERTIES(l) READONLYIF readonly(i) customerReference
+;
+
+amazonInvoiceType = DATA InvoiceType ();
+nameAmazonInvoiceType 'Тип реализации для Амазон' = name(amazonInvoiceType());
+
+idImportInvoiceAmazon 'ID таблицы импорта реализации с Амазон' = DATA STRING ();
+
+importInvoiceAmazon 'Импорт реализации с Амазон' (DATE date) {
+    NEWSESSION {
+        getValuesRange(idImportInvoiceAmazon(), 'SKU!A2:B', defaultAccount());
+        valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', '";');
+        LOCAL str = STRING();
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+
+        LOCAL amzModel = STRING(INTEGER);
+        LOCAL baseModel = STRING(INTEGER);
+        
+        IMPORT CSV ';' NOHEADER FROM resultFile() TO amzModel, baseModel;
+        
+        LOCAL dateTime = DATETIME(INTEGER);
+        LOCAL type = STRING(INTEGER);
+        LOCAL reference = STRING(INTEGER);
+        LOCAL model = STRING(INTEGER);
+        LOCAL quantity = NUMERIC[16,3](INTEGER);
+        LOCAL sum = NUMERIC[14,2](INTEGER);
+        LOCAL item = Item(INTEGER);
+        LOCAL index = INTEGER(INTEGER);
+        
+        getValuesRange(idImportInvoiceAmazon(), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A9:AA', defaultAccount());
+        valuesRows(INTEGER i) <- replace(replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+        
+        IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G, sum = AA;
+        
+        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == 'Bestellung' AND DATE(dateTime(i)) == date;
+        index(INTEGER i) <- PARTITION SUM 1 ORDER i BY reference(i), item(i);
+        
+        IF NOT (GROUP MAX Invoice i IF date(i) == date AND type(i) == amazonInvoiceType() AND customer(i) == FBAPartner()) THEN NEW i = Invoice {
+            dateTime(i) <- dateTimeToDateTime(date, TIME('23:59:59'));
+            type(i) <- amazonInvoiceType();
+            customer(i) <- FBAPartner();
+            //status(i) <- InvoiceStatus.draft;
+        }
+        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == amazonInvoiceType() AND customer(ii) == FBAPartner() AND status(ii) == InvoiceStatus.draft ORDER dateTime(ii), ii) DO {
+            LOCAL part = INTEGER(InvoiceLine);
+            part(InvoiceLine l) <- PARTITION SUM 1 IF invoice(l) == i ORDER index(l), l BY invoice(l), customerReference(l), item(l);
+
+            FOR [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) NEW l = InvoiceLine DO {
+                invoice(l) <- i;
+                customerReference(l) <- ref;
+                item(l) <- item;
+                part(l) <- index;
+            }
+            
+            FOR INTEGER x = [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND InvoiceLine il == [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) DO {
+                quantity(il) <- quantity(x);
+                untaxedAmount(il) <- sum(x);
+                price(il) <- NUMERIC[10,2](sum(x)/quantity(x));
+            }
+
+            FOR DATE nextDate = sum(date,1) AND lastDayOfMonth(date) == date DO {
+                getValuesRange(idImportInvoiceAmazon(), lpad(STRING(extractMonthNumber(nextDate)),2,'0') + '!A9:AA', defaultAccount());
+                valuesRows(INTEGER ii) <- replace(replace(replace(replace(replace(valuesRows(ii), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
+                str() <- GROUP CONCAT valuesRows(INTEGER j), '\n' ORDER i;
+                stringToFile(str());
+
+                IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G, sum = AA;
+
+                item(INTEGER ii) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(ii))) IF type(ii) == 'Bestellung' AND DATE(dateTime(ii)) == date;
+                index(INTEGER ii) <- PARTITION SUM 1 ORDER ii BY reference(ii), item(ii);
+
+                FOR [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) NEW l = InvoiceLine DO {
+                    invoice(l) <- i;
+                    customerReference(l) <- ref;
+                    item(l) <- item;
+                    part(l) <- index;
+                }
+
+                FOR INTEGER x = [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND InvoiceLine il == [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) DO {
+                    quantity(il) <- quantity(x);
+                    untaxedAmount(il) <- sum(x);
+                    price(il) <- NUMERIC[10,2](sum(x)/quantity(x));
+                }
+            }
+        }
+        APPLY;
+    } 
+}
+
+importInvoiceAmazon 'Импорт реализации с Амазон' () {
+    DIALOG dialogDate OBJECTS d INPUT DO {
+        importInvoiceAmazon(d);
+    }
+}
+
+EXTEND FORM integrationData
+    PROPERTIES () nameAmazonInvoiceType, idImportInvoiceAmazon, importInvoiceAmazon
+;
+DESIGN integrationData{
+    optionsImport{
+        MOVE PROPERTY (idImportInvoiceAmazon()) AFTER PROPERTY(idReceiptNL());
+        MOVE PROPERTY (nameAmazonInvoiceType()) BEFORE actionImport;
+        actionImport{
+            MOVE PROPERTY (importInvoiceAmazon());
+        }
+    }
+}
