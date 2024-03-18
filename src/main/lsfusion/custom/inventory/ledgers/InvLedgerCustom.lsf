@@ -1,0 +1,41 @@
+MODULE InvLedgerCustom;
+
+REQUIRE InvLedger;
+
+NAMESPACE Inventory;
+
+// constraint
+checkCountProductsLocation 'Контролировать количество товаров в местах хранения' = DATA BOOLEAN ();
+
+EXTEND FORM options
+    PROPERTIES checkCountProductsLocation()
+;
+DESIGN options {
+    commons {
+        MOVE PROPERTY(checkCountProductsLocation());
+    }
+}
+
+allowManyProducts 'Размещение разных товаров' = DATA BOOLEAN (Location);
+
+countProductsOnHand = GROUP SUM 1 IF onHand(Location ll, Product p) > 0 BY ll;
+
+recAllowManyProducts 'Размещение разных товаров' (Location child) =
+    GROUP LAST allowManyProducts(Location parent) ORDER DESC level(child, parent)
+    WHERE allowManyProducts(parent) MATERIALIZED;
+
+CONSTRAINT SET(countProductsOnHand(Location l) > 1) AND NOT countChildren(l) AND NOT recAllowManyProducts(l) AND checkCountProductsLocation()
+    MESSAGE 'Запрещено нахождение более одного товара на остатках места храненеия';
+
+EXTEND FORM location
+    PROPERTIES(l) allowManyProducts
+;
+DESIGN location {
+    params {
+        MOVE PROPERTY(allowManyProducts(l));
+    }
+}
+
+EXTEND FORM locations
+    PROPERTIES(l) READONLY recAllowManyProducts
+;
