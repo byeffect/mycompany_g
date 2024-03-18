@@ -15,15 +15,41 @@ EXTEND FORM receiptType
 ;
 
 isDefect 'Брак' = DATA BOOLEAN (ReceiptScan);
+note 'Note' = DATA TEXT (ReceiptScan);
 useDefects (ReceiptScan s) = useDefects(type(receipt(s)));
 defectLocation (ReceiptScan s) = defectLocation(type(receipt(s)));
 
+FORM dialogNoteReceiptScan 'Note'
+    OBJECTS s = ReceiptScan PANEL
+    PROPERTIES(s) note
+    
+    EVENTS ON APPLY BEFORE {
+        IF NOT note(s) THEN {
+            MESSAGE 'Не заполнено примечание' NOWAIT;
+            beforeCanceled() <- TRUE;
+        }
+}
+;
+
+DESIGN dialogNoteReceiptScan {
+    NEW string BEFORE TOOLBARBOX {
+        fill = 1;
+        MOVE PROPERTY (note(s)) {
+            fill = 1;
+            font = 'bold 64';
+            caption = '';
+            notNull = TRUE;
+        }
+    }
+}
+
 markAsDefect 'Брак' (ReceiptScan s) {
     NEWSESSION {
-        isDefect(s) <- TRUE;
-        location(s) <- defectLocation(s) WHERE defectLocation(s);
-
-        APPLY;
+        DIALOG dialogNoteReceiptScan OBJECTS s = s DO {
+            isDefect(s) <- TRUE;
+            location(s) <- defectLocation(s) WHERE defectLocation(s);
+            APPLY;
+        }
     }
 } CONFIRM;
 
@@ -31,7 +57,7 @@ unmarkAsDefect 'Не брак' (ReceiptScan s) {
     NEWSESSION {
         isDefect(s) <- NULL;
         location(s) <- location(location(receipt(s)), product(s));
-
+        note(s) <- NULL;
         APPLY;
     }
 } CONFIRM;

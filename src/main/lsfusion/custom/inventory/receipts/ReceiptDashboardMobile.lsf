@@ -49,6 +49,7 @@ markAsDone 'Завершить' (Receipt r) {
         putAway(r) <- TRUE;
         done(ReceiptLine l) <- quantityScan(l) WHERE receipt(l) = r;
         done(ReceiptLine l, Lot lt) <- quantityScan(r, lt) IF product(l) = product(lt) WHERE receipt(l) = r;
+        note(ReceiptLine l) <- (GROUP CONCAT note(ReceiptScan s) IF receipt(s) = receipt(l) AND product(s) = product(l), ', ' ORDER s) WHERE receipt(l) = r;
         
         DELETE ReceiptPutAway p WHERE receipt(receiptLine(p)) = r;
         FOR NUMERIC[16,3] q = quantityScan(r, product(ReceiptLine rl), Location l) IF receipt(rl) = r INLINE NEW p = ReceiptPutAway DO {
