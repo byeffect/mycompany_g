@@ -1,6 +1,6 @@
 MODULE InvoiceImportGSheets;
 
-REQUIRE ShipmentImportGSheets, Invoice;
+REQUIRE ShipmentImportGSheets, Invoice, SalesLedgerAccountInvoice;
 
 NAMESPACE Invoicing;
 
@@ -33,7 +33,20 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (DATE da
         LOCAL reference = STRING(INTEGER);
         LOCAL model = STRING(INTEGER);
         LOCAL quantity = NUMERIC[16,3](INTEGER);
-        LOCAL sum = NUMERIC[14,2](INTEGER);
+        LOCAL productSales = NUMERIC[14,2](INTEGER);
+        LOCAL productSalesTax = NUMERIC[14,2](INTEGER);
+        LOCAL postageCredits = NUMERIC[14,2](INTEGER);
+        LOCAL shippingCreditsTax = NUMERIC[14,2](INTEGER);
+        LOCAL giftWrapCredits = NUMERIC[14,2](INTEGER);
+        LOCAL giftwrapCreditsTax = NUMERIC[14,2](INTEGER);
+        LOCAL promotionalRebates = NUMERIC[14,2](INTEGER);
+        LOCAL promotionalRebatesTax = NUMERIC[14,2](INTEGER);
+        LOCAL marketplaceWithheldTax = NUMERIC[14,2](INTEGER);
+        LOCAL sellingFees = NUMERIC[14,2](INTEGER);
+        LOCAL fbaFees = NUMERIC[14,2](INTEGER);
+        LOCAL otherTransactionFees = NUMERIC[14,2](INTEGER);
+        LOCAL other = NUMERIC[14,2](INTEGER);
+        LOCAL total = NUMERIC[14,2](INTEGER);
         LOCAL item = Item(INTEGER);
         LOCAL index = INTEGER(INTEGER);
         
@@ -42,7 +55,12 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (DATE da
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
         stringToFile(str());
         
-        IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G, sum = AA;
+        IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G,
+                                                     productSales = N, productSalesTax = O, postageCredits = P,
+                                                     shippingCreditsTax = Q, giftWrapCredits = R, giftwrapCreditsTax = S,
+                                                     promotionalRebates = T, promotionalRebatesTax = U,
+                                                     marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
+                                                     otherTransactionFees = Y, other = Z, total = AA;
         
         item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == 'Bestellung' AND DATE(dateTime(i)) == date;
         index(INTEGER i) <- PARTITION SUM 1 ORDER i BY reference(i), item(i);
@@ -66,8 +84,54 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (DATE da
             
             FOR INTEGER x = [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND InvoiceLine il == [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) DO {
                 quantity(il) <- quantity(x);
-                untaxedAmount(il) <- sum(x);
-                price(il) <- NUMERIC[10,2](sum(x)/quantity(x));
+                untaxedAmount(il) <- total(x);
+                price(il) <- NUMERIC[10,2](total(x)/quantity(x));
+                
+                in(il, Tax tt) <- NULL;
+                taxAmount(Tax tt, il) <- NULL;
+                IF productSalesTax(x) > 0 OR productSalesTax(x) < 0 THEN {
+                    in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на продажу товаров';
+                    taxAmount(Tax tt, il) <- productSalesTax(x) WHERE name(tt) == 'Налог на продажу товаров';
+                }
+                IF shippingCreditsTax(x) > 0 OR shippingCreditsTax(x) < 0 THEN {
+                    in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на кредит на доставку';
+                    taxAmount(Tax tt, il) <- shippingCreditsTax(x) WHERE name(tt) == 'Налог на кредит на доставку';
+                }
+                IF giftwrapCreditsTax(x) > 0 OR giftwrapCreditsTax(x) < 0 THEN {
+                    in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на подарочную упаковку';
+                    taxAmount(Tax tt, il) <- giftwrapCreditsTax(x) WHERE name(tt) == 'Налог на подарочную упаковку';
+                }
+                IF promotionalRebatesTax(x) > 0 OR promotionalRebatesTax(x) < 0 THEN {
+                    in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на рекламные скидки';
+                    taxAmount(Tax tt, il) <- promotionalRebatesTax(x) WHERE name(tt) == 'Налог на рекламные скидки';
+                }
+                IF marketplaceWithheldTax(x) > 0 OR marketplaceWithheldTax(x) < 0 THEN {
+                    in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог, удерживаемый на рынке';
+                    taxAmount(Tax tt, il) <- marketplaceWithheldTax(x) WHERE name(tt) == 'Налог, удерживаемый на рынке';
+                }
+
+                dataAmount(il, CustomSalesAccount aa) <- NULL;
+                IF postageCredits(x) > 0 OR postageCredits(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- postageCredits(x) WHERE id(aa) == 'postage_credits';
+                }
+                IF giftWrapCredits(x) > 0 OR giftWrapCredits(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- giftWrapCredits(x) WHERE id(aa) == 'gift_wrap_credits';
+                }
+                IF promotionalRebates(x) > 0 OR promotionalRebates(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- promotionalRebates(x) WHERE id(aa) == 'promotional_rebates';
+                }
+                IF sellingFees(x) > 0 OR sellingFees(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- sellingFees(x) WHERE id(aa) == 'selling_fees';
+                }
+                IF fbaFees(x) > 0 OR fbaFees(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- fbaFees(x) WHERE id(aa) == 'fba_fees';
+                }
+                IF otherTransactionFees(x) > 0 OR otherTransactionFees(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- otherTransactionFees(x) WHERE id(aa) == 'other_transaction_fees';
+                }
+                IF other(x) > 0 OR other(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- other(x) WHERE id(aa) == 'other';
+                }
             }
 
             FOR DATE nextDate = sum(date,1) AND lastDayOfMonth(date) == date DO {
@@ -76,7 +140,12 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (DATE da
                 str() <- GROUP CONCAT valuesRows(INTEGER j), '\n' ORDER i;
                 stringToFile(str());
 
-                IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G, sum = AA;
+                IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G,
+                                                             productSales = N, productSalesTax = O, postageCredits = P,
+                                                             shippingCreditsTax = Q, giftWrapCredits = R, giftwrapCreditsTax = S,
+                                                             promotionalRebates = T, promotionalRebatesTax = U,
+                                                             marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
+                                                             otherTransactionFees = Y, other = Z, total = AA;
 
                 item(INTEGER ii) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(ii))) IF type(ii) == 'Bestellung' AND DATE(dateTime(ii)) == date;
                 index(INTEGER ii) <- PARTITION SUM 1 ORDER ii BY reference(ii), item(ii);
@@ -90,8 +159,54 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (DATE da
 
                 FOR INTEGER x = [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND InvoiceLine il == [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) DO {
                     quantity(il) <- quantity(x);
-                    untaxedAmount(il) <- sum(x);
-                    price(il) <- NUMERIC[10,2](sum(x)/quantity(x));
+                    untaxedAmount(il) <- total(x);
+                    price(il) <- NUMERIC[10,2](total(x)/quantity(x));
+
+                    in(il, Tax tt) <- NULL;
+                    taxAmount(Tax tt, il) <- NULL;
+                    IF productSalesTax(x) > 0 OR productSalesTax(x) < 0 THEN {
+                        in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на продажу товаров';
+                        taxAmount(Tax tt, il) <- productSalesTax(x) WHERE name(tt) == 'Налог на продажу товаров';
+                    }
+                    IF shippingCreditsTax(x) > 0 OR shippingCreditsTax(x) < 0 THEN {
+                        in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на кредит на доставку';
+                        taxAmount(Tax tt, il) <- shippingCreditsTax(x) WHERE name(tt) == 'Налог на кредит на доставку';
+                    }
+                    IF giftwrapCreditsTax(x) > 0 OR giftwrapCreditsTax(x) < 0 THEN {
+                        in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на подарочную упаковку';
+                        taxAmount(Tax tt, il) <- giftwrapCreditsTax(x) WHERE name(tt) == 'Налог на подарочную упаковку';
+                    }
+                    IF promotionalRebatesTax(x) > 0 OR promotionalRebatesTax(x) < 0 THEN {
+                        in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на рекламные скидки';
+                        taxAmount(Tax tt, il) <- promotionalRebatesTax(x) WHERE name(tt) == 'Налог на рекламные скидки';
+                    }
+                    IF marketplaceWithheldTax(x) > 0 OR marketplaceWithheldTax(x) < 0 THEN {
+                        in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог, удерживаемый на рынке';
+                        taxAmount(Tax tt, il) <- marketplaceWithheldTax(x) WHERE name(tt) == 'Налог, удерживаемый на рынке';
+                    }
+
+                    dataAmount(il, CustomSalesAccount aa) <- NULL;
+                    IF postageCredits(x) > 0 OR postageCredits(x) < 0 THEN {
+                        dataAmount(il, CustomSalesAccount aa) <- postageCredits(x) WHERE id(aa) == 'postage_credits';
+                    }
+                    IF giftWrapCredits(x) > 0 OR giftWrapCredits(x) < 0 THEN {
+                        dataAmount(il, CustomSalesAccount aa) <- giftWrapCredits(x) WHERE id(aa) == 'gift_wrap_credits';
+                    }
+                    IF promotionalRebates(x) > 0 OR promotionalRebates(x) < 0 THEN {
+                        dataAmount(il, CustomSalesAccount aa) <- promotionalRebates(x) WHERE id(aa) == 'promotional_rebates';
+                    }
+                    IF sellingFees(x) > 0 OR sellingFees(x) < 0 THEN {
+                        dataAmount(il, CustomSalesAccount aa) <- sellingFees(x) WHERE id(aa) == 'selling_fees';
+                    }
+                    IF fbaFees(x) > 0 OR fbaFees(x) < 0 THEN {
+                        dataAmount(il, CustomSalesAccount aa) <- fbaFees(x) WHERE id(aa) == 'fba_fees';
+                    }
+                    IF otherTransactionFees(x) > 0 OR otherTransactionFees(x) < 0 THEN {
+                        dataAmount(il, CustomSalesAccount aa) <- otherTransactionFees(x) WHERE id(aa) == 'other_transaction_fees';
+                    }
+                    IF other(x) > 0 OR other(x) < 0 THEN {
+                        dataAmount(il, CustomSalesAccount aa) <- other(x) WHERE id(aa) == 'other';
+                    }
                 }
             }
         }
@@ -115,5 +230,51 @@ DESIGN integrationData{
         actionImport{
             MOVE PROPERTY (importInvoiceAmazon());
         }
+    }
+}
+
+onStarted() + {
+    IF NOT (GROUP MAX Tax tt IF name(tt) == 'Налог на продажу товаров') THEN NEW t = Tax {
+        name(t) <- 'Налог на продажу товаров';
+    }
+    IF NOT (GROUP MAX Tax tt IF name(tt) == 'Налог на кредит на доставку') THEN NEW t = Tax {
+        name(t) <- 'Налог на кредит на доставку';
+    }
+    IF NOT (GROUP MAX Tax tt IF name(tt) == 'Налог на подарочную упаковку') THEN NEW t = Tax {
+        name(t) <- 'Налог на подарочную упаковку';
+    }
+    IF NOT (GROUP MAX Tax tt IF name(tt) == 'Налог на рекламные скидки') THEN NEW t = Tax {
+        name(t) <- 'Налог на рекламные скидки';
+    }
+    IF NOT (GROUP MAX Tax tt IF name(tt) == 'Налог, удерживаемый на рынке') THEN NEW t = Tax {
+        name(t) <- 'Налог, удерживаемый на рынке';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'postage_credits') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'postage_credits';
+        name(a) <- 'Кредит на расходы по доставке';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'gift_wrap_credits') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'gift_wrap_credits';
+        name(a) <- 'Кредит на подарочную упаковку';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'promotional_rebates') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'promotional_rebates';
+        name(a) <- 'Скидки в рамках рекламных акций';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'selling_fees') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'selling_fees';
+        name(a) <- 'Сборы с продаж';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'fba_fees') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'fba_fees';
+        name(a) <- 'Сборы за доставку через Amazon';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'other_transaction_fees') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'other_transaction_fees';
+        name(a) <- 'Другие сборы за транзакции';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'other') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'other';
+        name(a) <- 'Другие';
     }
 }
