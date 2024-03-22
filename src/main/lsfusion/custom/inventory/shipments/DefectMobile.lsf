@@ -1,0 +1,101 @@
+MODULE DefectMobile;
+
+REQUIRE ReceiptMobile, ShipmentLot;
+
+NAMESPACE Inventory;
+
+returnDefectShipmentType = DATA ShipmentType();
+nameReturnDefectShipmentType 'Тип перемешения для возврата из брака' () = name(returnDefectShipmentType());
+
+EXTEND FORM options
+    PROPERTIES nameReturnDefectShipmentType()
+;
+DESIGN options {
+    commons {
+        MOVE PROPERTY(nameReturnDefectShipmentType());
+    }
+}
+
+onStarted()+{
+    IF NOT shipmentType('returnDefect') THEN NEW s = ShipmentType{
+        id(s) <- 'returnDefect';
+        name(s) <- 'Возврат из брака';
+        isTransfer(s) <- TRUE;
+        numerator(s) <- NULL;
+    }
+    returnDefectShipmentType() <- shipmentType('returnDefect') WHERE NOT returnDefectShipmentType();
+}
+
+htmlDefect '' (Lot l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + id(l) + '</font>', '(' + idDefaultModelProduct(l) + ')', '<u>' + name(minLocationOnHand(l)) + '</u>') + '</div>');
+
+lastShipment (Location from, Location to, ShipmentType t, DATE d) = GROUP LAST Shipment s ORDER scheduledDateTime(s), s BY location(s), toLocation(s), type(s), scheduledDate(s);
+
+returnDefect 'Вернуть на склад' (Lot l) {
+    NEWSESSION {
+        IF NOT lastShipment(minLocationOnHand(l), location(parent(minLocationOnHand(l)), product(l)), returnDefectShipmentType(), currentDate()) THEN NEW s = Shipment {
+            scheduledDateTime(s) <- DATETIME(currentDate());
+            executionDateTime(s) <- currentDateTime();
+            location(s) <- minLocationOnHand(l);
+            toLocation(s) <- location(parent(minLocationOnHand(l)), product(l));
+            type(s) <- returnDefectShipmentType();
+            done(s) <- TRUE;
+        }
+        NEW sl = ShipmentLine {
+            shipment(sl) <- lastShipment(minLocationOnHand(l), location(parent(minLocationOnHand(l)), product(l)), returnDefectShipmentType(), currentDate());
+            product(sl) <- product(l);
+            done(sl) <- onHand(minLocationOnHand(l),l);
+            done(sl,l) <- onHand(minLocationOnHand(l),l);
+        }
+        APPLY;
+        IF NOT canceled() THEN beep(successSound(), TRUE);
+    }
+} CONFIRM;
+
+FORM defectMobile 'Возврат из брака'
+    OBJECTS l = Lot
+    PROPERTIES() barcodeNumeric ON CHANGE {
+        INPUT s = STRING LIST id(Lot ll) IF minLocationOnHand(ll) AND (GROUP SUM 1 IF defectLocation(ReceiptType t) == minLocationOnHand(ll)) DO {
+            IF lot(s) AND minLocationOnHand(lot(s)) AND (GROUP SUM 1 IF defectLocation(ReceiptType t) == minLocationOnHand(lot(s))) THEN {
+                SEEK defectMobile.l = lot(s);
+                beep(infoSound(), TRUE);
+            } ELSE {
+                beep(warningSound(), TRUE);
+                MESSAGE 'Не найдено указанного IMEI в зоне брака';
+            }
+        }
+    }
+    PROPERTIES(l) READONLY htmlDefect
+    PROPERTIES(l) returnDefect
+    FILTERS minLocationOnHand(l) AND (GROUP SUM 1 IF defectLocation(ReceiptType t) == minLocationOnHand(l))
+;
+
+DESIGN defectMobile {
+    OBJECTS {
+        class = '';
+        NEW pane {
+            fill = 1;
+            NEW imei {
+                alignment = STRETCH;
+                MOVE PROPERTY(barcodeNumeric()) {
+                    caption = '';
+                    placeholder = 'Введите штрих-код';
+                }
+            }
+            MOVE GRID(l);
+            REMOVE BOX(l);
+            MOVE PROPERTY(returnDefect(l)) { alignment = STRETCH; }
+        }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+NAVIGATOR {
+    dashboards {
+        NEW defectMobile;
+    }
+}
+
+showMobileForms() + {
+    IF permit(currentUser(), navigatorElementCanonicalName('Inventory.defectMobile')) THEN
+        SHOW defectMobile NOWAIT;
+}

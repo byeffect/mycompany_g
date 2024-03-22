@@ -36,4 +36,4 @@ REQUIRE Eval, ProcessMonitor, Backup,
         SalesLedgerReport, SalesLedgerAccountReport, InvoiceImportGSheets,
 
         ReceiptPlan,
-        InvLedgerCustom;
+        InvLedgerCustom, DefectMobile;
