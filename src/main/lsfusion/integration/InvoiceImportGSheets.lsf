@@ -13,11 +13,18 @@ EXTEND FORM invoice
 amazonInvoiceType = DATA InvoiceType ();
 nameAmazonInvoiceType 'Тип реализации для Амазон' = name(amazonInvoiceType());
 
-idImportInvoiceAmazon 'ID таблицы импорта реализации с Амазон' = DATA STRING ();
+//импорт реализации с Амазон
+activeImportInvoiceAmazon '{Active}' = DATA BOOLEAN (Country);
+idImportInvoiceAmazon 'ID таблицы' = DATA STRING (Country) CHARWIDTH 40;
+typeImportInvoiceAmazon 'Тип зказа' = DATA STRING (Country) CHARWIDTH 20;
 
-importInvoiceAmazon 'Импорт реализации с Амазон' (DATE date) {
+CONSTRAINT (SET(activeImportInvoiceAmazon(Country c)) OR CHANGED( idImportInvoiceAmazon(c)) OR CHANGED(typeImportInvoiceAmazon(c)))
+    AND activeImportInvoiceAmazon(c) AND NOT (idImportInvoiceAmazon(c) AND typeImportInvoiceAmazon(c))
+    MESSAGE 'Не заполнены ID таблицы и Тип зказа';
+
+importInvoiceAmazon 'Импорт реализации с Амазон' (Country c, DATE date) {
     NEWSESSION {
-        getValuesRange(idImportInvoiceAmazon(), 'SKU!A2:B', defaultAccount());
+        getValuesRange(idImportInvoiceAmazon(c), 'SKU!A2:B', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', '";');
         LOCAL str = STRING();
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
@@ -50,7 +57,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (DATE da
         LOCAL item = Item(INTEGER);
         LOCAL index = INTEGER(INTEGER);
         
-        getValuesRange(idImportInvoiceAmazon(), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A9:AA', defaultAccount());
+        getValuesRange(idImportInvoiceAmazon(c), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A9:AA', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
         stringToFile(str());
@@ -62,7 +69,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (DATE da
                                                      marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
                                                      otherTransactionFees = Y, other = Z, total = AA;
         
-        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == 'Bestellung' AND DATE(dateTime(i)) == date;
+        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == typeImportInvoiceAmazon(c) AND DATE(dateTime(i)) == date;
         index(INTEGER i) <- PARTITION SUM 1 ORDER i BY reference(i), item(i);
         
         IF NOT (GROUP MAX Invoice i IF date(i) == date AND type(i) == amazonInvoiceType() AND customer(i) == FBAPartner()) THEN NEW i = Invoice {
@@ -135,7 +142,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (DATE da
             }
 
             FOR DATE nextDate = sum(date,1) AND lastDayOfMonth(date) == date DO {
-                getValuesRange(idImportInvoiceAmazon(), lpad(STRING(extractMonthNumber(nextDate)),2,'0') + '!A9:AA', defaultAccount());
+                getValuesRange(idImportInvoiceAmazon(c), lpad(STRING(extractMonthNumber(nextDate)),2,'0') + '!A9:AA', defaultAccount());
                 valuesRows(INTEGER ii) <- replace(replace(replace(replace(replace(valuesRows(ii), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
                 str() <- GROUP CONCAT valuesRows(INTEGER j), '\n' ORDER i;
                 stringToFile(str());
@@ -147,7 +154,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (DATE da
                                                              marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
                                                              otherTransactionFees = Y, other = Z, total = AA;
 
-                item(INTEGER ii) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(ii))) IF type(ii) == 'Bestellung' AND DATE(dateTime(ii)) == date;
+                item(INTEGER ii) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(ii))) IF type(ii) == typeImportInvoiceAmazon(c) AND DATE(dateTime(ii)) == date;
                 index(INTEGER ii) <- PARTITION SUM 1 ORDER ii BY reference(ii), item(ii);
 
                 FOR [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) NEW l = InvoiceLine DO {
@@ -214,21 +221,33 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (DATE da
     } 
 }
 
+importInvoiceAmazon 'Импорт реализации с Амазон' (Country c) {
+    DIALOG dialogDate OBJECTS d INPUT DO {
+        importInvoiceAmazon(c,d);
+    }
+}
+
 importInvoiceAmazon 'Импорт реализации с Амазон' () {
     DIALOG dialogDate OBJECTS d INPUT DO {
-        importInvoiceAmazon(d);
+        FOR activeImportInvoiceAmazon(Country c) DO {
+            importInvoiceAmazon(c,d);
+        }
     }
 }
 
 EXTEND FORM integrationData
-    PROPERTIES () nameAmazonInvoiceType, idImportInvoiceAmazon, importInvoiceAmazon
+    OBJECTS cn = Country
+    PROPERTIES(cn) activeImportInvoiceAmazon, name READONLY, idImportInvoiceAmazon, typeImportInvoiceAmazon
+    PROPERTIES(cn) TOOLBAR importInvoiceAmazon
+    FILTERGROUP activeImportInvoiceAmazon
+        FILTER '{Active}' activeImportInvoiceAmazon(cn) DEFAULT
+    PROPERTIES() nameAmazonInvoiceType, importInvoiceAmazon
 ;
 DESIGN integrationData{
     optionsImport{
-        MOVE PROPERTY (idImportInvoiceAmazon()) AFTER PROPERTY(idReceiptNL());
-        MOVE PROPERTY (nameAmazonInvoiceType()) BEFORE actionImport;
+        MOVE PROPERTY(nameAmazonInvoiceType()) BEFORE actionImport;
         actionImport{
-            MOVE PROPERTY (importInvoiceAmazon());
+            MOVE PROPERTY(importInvoiceAmazon());
         }
     }
 }
