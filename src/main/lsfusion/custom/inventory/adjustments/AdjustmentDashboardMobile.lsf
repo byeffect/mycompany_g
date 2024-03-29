@@ -8,8 +8,25 @@ edit 'Изменить' (Adjustment r) {
     SHOW adjustmentMobile OBJECTS a = r DOCKED NOWAIT;
 } CHANGEMOUSE 'DBLCLK';
 
+incorrectLot (Adjustment a) = 
+            'В инвентаризации обнаружены SKU, которые не должны находиться в заданной ячейке. Изменить им SKU на ' + name(defaultProduct(location(a))) + '?\n' 
+            + (GROUP CONCAT id(lot(AdjustmentScan sa)) + ' - ' + name(product(lot(sa))) IF adjustment(sa) = a AND product(lot(sa)) != defaultProduct(location(a)), ',' ORDER sa);
+
 markAsDone 'Завершить' (Adjustment a) {
-    NEWSESSION { 
+    NEWSESSION {
+        ASK incorrectLot(a) q = YESNO DO {
+            IF q THEN
+                FOR adjustment(AdjustmentScan as) = a DO {
+                    NEW l = Lot {
+                        id(l) <- id(lot(as));
+                        product(l) <- defaultProduct(location(a));
+                        vendor(l) <- vendor(lot(as));
+
+                        id(lot(as)) <- id(lot(as)) + '_';
+                        lot(as) <- l;
+                    }
+                } 
+        } ELSE RETURN;
         done(a) <- TRUE;
         FOR quantityScan(a, Product p) OR onHand(location(a), p) DO NEW al = AdjustmentLine {
             adjustment(al) <- a;
