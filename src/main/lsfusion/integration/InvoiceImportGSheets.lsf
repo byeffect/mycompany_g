@@ -236,11 +236,11 @@ importInvoiceAmazon 'Импорт реализации с Амазон' () {
 }
 
 EXTEND FORM integrationData
-    OBJECTS cn = Country
-    PROPERTIES(cn) activeImportInvoiceAmazon, name READONLY, idImportInvoiceAmazon, typeImportInvoiceAmazon
-    PROPERTIES(cn) TOOLBAR importInvoiceAmazon
+    OBJECTS ca 'Импорт реализации с Амазон' = Country
+    PROPERTIES(ca) activeImportInvoiceAmazon, name READONLY, idImportInvoiceAmazon, typeImportInvoiceAmazon
+    PROPERTIES(ca) TOOLBAR importInvoiceAmazon
     FILTERGROUP activeImportInvoiceAmazon
-        FILTER '{Active}' activeImportInvoiceAmazon(cn) DEFAULT
+        FILTER '{Active}' activeImportInvoiceAmazon(ca) DEFAULT
     PROPERTIES() nameAmazonInvoiceType, importInvoiceAmazon
 ;
 DESIGN integrationData{
@@ -295,5 +295,203 @@ onStarted() + {
     IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'other') THEN NEW a = CustomSalesAccount {
         id(a) <- 'other';
         name(a) <- 'Другие';
+    }
+}
+
+ebayInvoiceType = DATA InvoiceType ();
+nameEbayInvoiceType 'Тип реализации для eBay' = name(ebayInvoiceType());
+
+//импорт реализации с eBay
+activeImportInvoiceEbay '{Active}' = DATA BOOLEAN (Country);
+idImportInvoiceEbay 'ID таблицы' = DATA STRING (Country) CHARWIDTH 40;
+typeImportInvoiceEbay 'Тип зказа' = DATA STRING (Country) CHARWIDTH 20;
+
+CONSTRAINT (SET(activeImportInvoiceEbay(Country c)) OR CHANGED( idImportInvoiceEbay(c)) OR CHANGED(typeImportInvoiceEbay(c)))
+    AND activeImportInvoiceEbay(c) AND NOT (idImportInvoiceEbay(c) AND typeImportInvoiceEbay(c))
+    MESSAGE 'Не заполнены ID таблицы и Тип зказа';
+
+importInvoiceEbay 'Импорт реализации с eBay' (Country c, DATE date) {
+    NEWSESSION {
+        getValuesRange(idImportInvoiceEbay(c), 'SKU!A2:B', defaultAccount());
+        valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', '";');
+        LOCAL str = STRING();
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+
+        LOCAL amzModel = STRING(INTEGER);
+        LOCAL baseModel = STRING(INTEGER);
+
+        IMPORT CSV ';' NOHEADER FROM resultFile() TO amzModel, baseModel;
+
+        LOCAL date = DATE(INTEGER);
+        LOCAL type = STRING(INTEGER);
+        LOCAL reference = STRING(INTEGER);
+        LOCAL article = STRING(INTEGER);
+        LOCAL model = STRING(INTEGER);
+        LOCAL quantity = NUMERIC[16,3](INTEGER);
+        LOCAL sum = NUMERIC[14,2](INTEGER);
+        LOCAL productSales = NUMERIC[14,2](INTEGER);
+        LOCAL packagingAndShipping = NUMERIC[14,2](INTEGER);
+        LOCAL sellerTax = NUMERIC[14,2](INTEGER);
+        LOCAL ebayTax = NUMERIC[14,2](INTEGER);
+        LOCAL fixedSalesCommission = NUMERIC[14,2](INTEGER);
+        LOCAL variableSalesCommission = NUMERIC[14,2](INTEGER);
+        LOCAL highRateOfNotDescribedItemsFee = NUMERIC[14,2](INTEGER);
+        LOCAL belowAverageServiceFees = NUMERIC[14,2](INTEGER);
+        LOCAL internationalFees = NUMERIC[14,2](INTEGER);
+        LOCAL charityDonation = NUMERIC[14,2](INTEGER);
+        LOCAL total = NUMERIC[14,2](INTEGER);
+        LOCAL item = Item(INTEGER);
+        LOCAL index = INTEGER(INTEGER);
+
+        getValuesRange(idImportInvoiceEbay(c), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A9:AH', defaultAccount());
+        valuesRows(INTEGER i) <- replace(replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+
+        IMPORT CSV ';' NOHEADER FROM resultFile() TO date = A, type = B, reference = C, article = R, model = U, quantity = V,
+                                                     sum = W, productSales = K, packagingAndShipping = X, sellerTax = Y,
+                                                     ebayTax = Z, fixedSalesCommission = AB, variableSalesCommission = AC,
+                                                     highRateOfNotDescribedItemsFee = AD, belowAverageServiceFees = AE,
+                                                     internationalFees = AF, charityDonation = AG, total = AH;
+
+        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == typeImportInvoiceEbay(c) AND date(i) == date;
+        index(INTEGER i) <- PARTITION SUM 1 ORDER i BY reference(i), item(i);
+
+        IF NOT (GROUP MAX Invoice i IF date(i) == date AND type(i) == ebayInvoiceType() AND customer(i) == FBAPartner()) THEN NEW i = Invoice {
+            dateTime(i) <- dateTimeToDateTime(date, TIME('23:59:59'));
+            type(i) <- ebayInvoiceType();
+            customer(i) <- FBAPartner();
+            //status(i) <- InvoiceStatus.draft;
+        }
+        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == ebayInvoiceType() AND customer(ii) == FBAPartner() AND status(ii) == InvoiceStatus.draft ORDER dateTime(ii), ii) DO {
+            LOCAL part = INTEGER(InvoiceLine);
+            part(InvoiceLine l) <- PARTITION SUM 1 IF invoice(l) == i ORDER index(l), l BY invoice(l), customerReference(l), item(l);
+
+            FOR [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) NEW l = InvoiceLine DO {
+                invoice(l) <- i;
+                customerReference(l) <- ref;
+                item(l) <- item;
+                part(l) <- index;
+            }
+
+            FOR INTEGER x = [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND InvoiceLine il == [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) DO {
+                quantity(il) <- quantity(x);
+                untaxedAmount(il) <- sum(x);
+                price(il) <- NUMERIC[10,2](sum(x)/quantity(x));
+
+                in(il, Tax tt) <- NULL;
+                taxAmount(Tax tt, il) <- NULL;
+                IF sellerTax(x) > 0 OR sellerTax(x) < 0 THEN {
+                    in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог, взимаемый продавцом';
+                    taxAmount(Tax tt, il) <- sellerTax(x) WHERE name(tt) == 'Налог, взимаемый продавцом';
+                }
+                IF ebayTax(x) > 0 OR ebayTax(x) < 0 THEN {
+                    in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог, взимаемый eBay';
+                    taxAmount(Tax tt, il) <- ebayTax(x) WHERE name(tt) == 'Налог, взимаемый eBay';
+                }
+                IF internationalFees(x) > 0 OR internationalFees(x) < 0 THEN {
+                    in(il, Tax tt) <- TRUE WHERE name(tt) == 'Международный сбор';
+                    taxAmount(Tax tt, il) <- internationalFees(x) WHERE name(tt) == 'Международный сбор';
+                }
+
+                dataAmount(il, CustomSalesAccount aa) <- NULL;
+                IF packagingAndShipping(x) > 0 OR packagingAndShipping(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- packagingAndShipping(x) WHERE id(aa) == 'packaging_and_shipping';
+                }
+                IF fixedSalesCommission(x) > 0 OR fixedSalesCommission(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- fixedSalesCommission(x) WHERE id(aa) == 'fixed_sales_commission';
+                }
+                IF variableSalesCommission(x) > 0 OR variableSalesCommission(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- variableSalesCommission(x) WHERE id(aa) == 'variable_sales_commission';
+                }
+                IF highRateOfNotDescribedItemsFee(x) > 0 OR highRateOfNotDescribedItemsFee(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- highRateOfNotDescribedItemsFee(x) WHERE id(aa) == 'high_rate_of_not_described_items_fees';
+                }
+                IF belowAverageServiceFees(x) > 0 OR belowAverageServiceFees(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- belowAverageServiceFees(x) WHERE id(aa) == 'below_average_service_fees';
+                }
+                IF charityDonation(x) > 0 OR charityDonation(x) < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- charityDonation(x) WHERE id(aa) == 'charity_donation';
+                }
+                LOCAL other = NUMERIC[14,2]();
+                other() <- (GROUP SUM total(INTEGER j) IF date(j) == date(x) AND reference(j) == reference(x) AND article(j) == article(x) AND type(j) == 'Andere Gebühr');
+                IF other() > 0 OR other() < 0 THEN {
+                    dataAmount(il, CustomSalesAccount aa) <- other() WHERE id(aa) == 'other_fees';
+                }
+            }
+        }
+        APPLY;
+    }
+}
+
+importInvoiceEbay 'Импорт реализации с eBay' (Country c) {
+    DIALOG dialogDate OBJECTS d INPUT DO {
+        importInvoiceEbay(c,d);
+    }
+}
+
+importInvoiceEbay 'Импорт реализации с eBay' () {
+    DIALOG dialogDate OBJECTS d INPUT DO {
+        FOR activeImportInvoiceEbay(Country c) DO {
+            importInvoiceEbay(c,d);
+        }
+    }
+}
+
+EXTEND FORM integrationData
+    OBJECTS ce 'Импорт реализации с eBay' = Country
+    PROPERTIES(ce) activeImportInvoiceEbay, name READONLY, idImportInvoiceEbay, typeImportInvoiceEbay
+    PROPERTIES(ce) TOOLBAR importInvoiceEbay
+    FILTERGROUP activeImportInvoiceEbay
+        FILTER '{Active}' activeImportInvoiceEbay(ce) DEFAULT
+    PROPERTIES() nameEbayInvoiceType, importInvoiceEbay
+;
+DESIGN integrationData{
+    optionsImport{
+        MOVE PROPERTY(nameEbayInvoiceType()) BEFORE actionImport;
+        actionImport{
+            MOVE PROPERTY(importInvoiceEbay());
+        }
+    }
+}
+
+onStarted() + {
+    IF NOT (GROUP MAX Tax tt IF name(tt) == 'Налог, взимаемый продавцом') THEN NEW t = Tax {
+        name(t) <- 'Налог, взимаемый продавцом';
+    }
+    IF NOT (GROUP MAX Tax tt IF name(tt) == 'Налог, взимаемый eBay') THEN NEW t = Tax {
+        name(t) <- 'Налог, взимаемый eBay';
+    }
+    IF NOT (GROUP MAX Tax tt IF name(tt) == 'Международный сбор') THEN NEW t = Tax {
+        name(t) <- 'Международный сбор';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'packaging_and_shipping') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'packaging_and_shipping';
+        name(a) <- 'Упаковка и доставка';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'fixed_sales_commission') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'fixed_sales_commission';
+        name(a) <- 'Фиксированная часть комиссии за продажу';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'variable_sales_commission') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'variable_sales_commission';
+        name(a) <- 'Переменная часть комиссии за продажу';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'high_rate_of_not_described_items_fees') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'high_rate_of_not_described_items_fee';
+        name(a) <- 'Вознаграждение за очень высокий процент "товаров, не соответствующих описанию"';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'below_average_service_fees') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'below_average_service_fees';
+        name(a) <- 'Плата за обслуживание на уровне ниже среднего';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'charity_donation') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'charity_donation';
+        name(a) <- 'Благотворительное пожертвование';
+    }
+    IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'other_fees') THEN NEW a = CustomSalesAccount {
+        id(a) <- 'other_fees';
+        name(a) <- 'Другая плата';
     }
 }
