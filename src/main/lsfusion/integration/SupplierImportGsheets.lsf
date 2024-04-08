@@ -1,6 +1,6 @@
 MODULE SupplierImportGsheets;
 
-REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot, ReceiptPlan, Messenger;
+REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot, ReceiptPlan, Messenger, ReceiptCost;
 
 NAMESPACE Inventory;
 
@@ -448,5 +448,93 @@ DESIGN integrationData{
                 MOVE PROPERTY (importSupplier1());
             }
         }
+    }
+}
+
+//импорт приемок PnL
+
+pnlReceiptType = DATA ReceiptType ();
+namePnlReceiptType 'Тип приемки PnL' = name(pnlReceiptType());
+pnlLocation = DATA Location ();
+namePnlLocaltion 'Склад PnL' () = name(pnlLocation()) CHARWIDTH 40;
+idImportReceiptPnl 'ID таблицы приемки PnL' = DATA STRING () CHARWIDTH 60;
+
+chr = FORMULA TEXT 'chr($1)';
+replaceChr160 (STRING s) = replace(s, chr(160), '');
+
+importReceiptPnl 'Импорт приемки PnL' (DATE date) {
+    NEWSESSION {
+        IF NOT pnlReceiptType() THEN MESSAGE 'Заполните Тип приемки PnL';
+            ELSE IF NOT pnlLocation() THEN MESSAGE 'Заполните Склад PnL';
+                ELSE IF NOT idImportReceiptPnl() THEN MESSAGE 'Заполните ID таблицы приемки PnL';
+                    ELSE {
+                    getValuesRange(idImportReceiptPnl(), 'Orders!A2:M', defaultAccount());
+                    valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), '[', ''), ']', ''), '","', ';'), '"', '');
+                    LOCAL str = STRING();
+                    str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+                    stringToFile(str());
+
+                    LOCAL date = DATE (INTEGER);
+                    LOCAL model = STRING (INTEGER);
+                    LOCAL status = STRING (INTEGER);
+                    LOCAL quantity = INTEGER (INTEGER);
+
+                    LOCAL price = NUMERIC[10,2] (INTEGER);
+                    LOCAL box = STRING (INTEGER);
+                    LOCAL unit = STRING (INTEGER);
+                    LOCAL unitShipment = NUMERIC[14,2] (INTEGER);
+                    LOCAL shipment = NUMERIC[14,2] (INTEGER);
+                    LOCAL amount = NUMERIC[14,2] (INTEGER);
+
+                    LOCAL sum = STRING (INTEGER);
+                    LOCAL batch = INTEGER (INTEGER);
+                    LOCAL vendor = STRING (INTEGER);
+
+                    IMPORT CSV ';' NOHEADER FROM resultFile() TO date, model, status, quantity, price, box, unit, unitShipment, shipment, amount, sum, batch, vendor;
+
+                    LOCAL item = Item (INTEGER);
+                    item(INTEGER i) <- productModel(model(i));
+                    vendor(INTEGER i) <- replace(vendor(i), 'П', '');
+                    sum(INTEGER i) <- replaceChr160(sum(i));
+
+                    IF (GROUP SUM 1 IF date(INTEGER i) == date AND lower(status(i)) == 'new' AND item(i)) THEN NEW r = Receipt {
+                        scheduledDateTime(r) <- DATETIME(date);
+                        type(r) <- pnlReceiptType();
+                        location(r) <- pnlLocation();
+                        vendor(r) <- partner('supplier' + vendor(GROUP MAX INTEGER i IF date(i) == date AND lower(status(i)) == 'new' AND item(i)));
+
+                        FOR date(INTEGER i) == date AND lower(status(i)) == 'new' AND item(i) NEW l = ReceiptLine DO {
+                            receipt(l) <- r;
+                            product(l) <- item(i);
+                            initialDemand(l) <- quantity(i);
+                            //done(l) <- quantity(i);
+                            dataCost(l) <- NUMERIC[14,2](NUMERIC[14,2](sum(i)) / quantity(i));
+                        }
+                    }
+
+                    APPLY;
+                }
+    }
+}
+
+importReceiptPnl 'Импорт приемки PnL' () {
+    DIALOG dialogDate OBJECTS d INPUT DO {
+        importReceiptPnl(d);
+    }
+}
+
+EXTEND FORM integrationData PROPERTIES namePnlReceiptType(), namePnlLocaltion(), idImportReceiptPnl(), importReceiptPnl();
+
+DESIGN integrationData {
+    optionsImport {
+        NEW pnl BEFORE actionImport {
+            horizontal = TRUE;
+            MOVE PROPERTY(namePnlReceiptType());
+            MOVE PROPERTY(namePnlLocaltion());
+            MOVE PROPERTY(idImportReceiptPnl());
+        }
+    }
+    actionImport {
+        MOVE PROPERTY(importReceiptPnl());
     }
 }

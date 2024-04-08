@@ -29,6 +29,8 @@ showCost 'Show cost price' = DATA BOOLEAN (ReceiptType);
 dataCost 'Cost' = DATA NUMERIC[14,2] (ReceiptLine);
 cost (ReceiptLine l) += WHEN dataCost(l) THEN dataCost(l);
 
+EXTEND FORM receiptType PROPERTIES(o) showCost;
+
 EXTEND FORM receipt
     PROPERTIES(l) cost SHOWIF showCost(type(r)) ON CHANGE { INPUT c = cost(l) DO dataCost(l) <- c; }
 ;
