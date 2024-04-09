@@ -1,0 +1,83 @@
+MODULE ManufacturingEmployee;
+
+REQUIRE Employee, ManufacturingSettings;
+
+NAMESPACE MasterData;
+
+CLASS Technician 'Техник' : Employee;
+
+WHEN CHANGED(firstName(Technician e)) DO firstName[Contact](e) <- firstName(e);
+WHEN CHANGED(lastName(Technician e)) DO lastName[Contact](e) <- lastName(e);
+
+CLASS Qualification 'Квалификация' {
+    seniorEngineer 'Ведущий инженер',
+    engineer 'Инженер',
+    technician 'Техник'
+}
+
+name 'Квалификация' (Qualification q) = staticCaption(q);
+
+qualification = DATA Qualification (Technician);
+nameQualification 'Квалификация ' (Technician t) = name(qualification(t));
+
+startDate 'Дата начала работы' = DATA DATE (Technician);
+WHEN SET(Technician t IS Technician) AND NOT startDate(t) DO startDate(t) <- currentDate();
+
+experience 'Стаж работы (лет)' (Technician t) = extractYear(currentDate()) - extractYear(startDate(t));
+
+image = DATA IMAGEFILE (Technician);
+loadImage 'Загрузить фото' (Technician t)  {
+    INPUT = image(t) CHANGE;
+}
+dropImage 'Удалить фото'(Technician t)  {
+    image(t) <- NULL;
+}
+
+FORM technician 'Техник'
+    OBJECTS t = Technician PANEL 
+    PROPERTIES(t) firstName, lastName, login, sha256Password ON CHANGE changeSHA256Password(t), nameQualification,
+        startDate, experience, image, loadImage, dropImage
+    
+    EDIT Technician OBJECT t
+;
+
+DESIGN technician {
+    OBJECTS {
+        NEW main {
+            MOVE PROPERTY(firstName(t));
+            MOVE PROPERTY(lastName(t));
+            MOVE PROPERTY(login(t));
+            MOVE PROPERTY(sha256Password(t));
+            MOVE PROPERTY(nameQualification(t));
+            MOVE PROPERTY(startDate(t));
+            MOVE PROPERTY(experience(t));
+        }
+        NEW image {
+            fill = 2;
+            MOVE PROPERTY(image(t)) { 
+                fill = 1; 
+                panelCaptionVertical = TRUE; 
+                caption = 'Фото';
+            }
+            NEW imageActions {
+                horizontal = TRUE;
+                MOVE PROPERTY(loadImage(t));
+                MOVE PROPERTY(dropImage(t));
+            }
+        }
+    }
+}
+
+FORM technicians 'Техники'
+    OBJECTS t = Technician
+    PROPERTIES(t) READONLY firstName, lastName, nameQualification, startDate, experience
+    PROPERTIES(t) NEWSESSION NEW, EDIT, DELETE
+
+    LIST Technician OBJECT t
+;
+
+NAVIGATOR {
+    manufacturingMasterData {
+        NEW technicians;
+    }
+}
