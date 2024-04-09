@@ -1,6 +1,6 @@
 MODULE SupplierImportGsheets;
 
-REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot, ReceiptPlan, Messenger, ReceiptCost;
+REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot, ReceiptPlan, Messenger, ReceiptCost, LotCustom;
 
 NAMESPACE Inventory;
 
@@ -536,5 +536,92 @@ DESIGN integrationData {
     }
     actionImport {
         MOVE PROPERTY(importReceiptPnl());
+    }
+}
+
+//импорт тваров ghseets
+idImportLotsGsheets 'ID таблицы импорта партий' = DATA STRING ();
+
+importLotsGsheets 'Импорт партий ghseets'() {
+    NEWSESSION {
+        IF NOT idImportLotsGsheets() THEN MESSAGE 'ID таблицы импорта партий';
+        ELSE {
+            LOCAL supplier = STRING(INTEGER);
+            LOCAL dateLot = STRING(INTEGER);
+            LOCAL order = STRING(INTEGER);
+            LOCAL assignment = STRING(INTEGER);
+            LOCAL date = DATE(INTEGER);
+            LOCAL model = STRING (INTEGER);
+            LOCAL modelTech = STRING (INTEGER);
+            LOCAL color = STRING (INTEGER);
+            LOCAL storage = STRING (INTEGER);
+            LOCAL sim = STRING (INTEGER);
+            LOCAL imei1 = STRING (INTEGER);
+            LOCAL imei2 = STRING (INTEGER);
+            LOCAL seriesNumber = STRING (INTEGER);
+
+            getValuesRange(idImportLotsGsheets(), 'Платы!A3:M', defaultAccount());
+            valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), '[', ''), ']', ''), '","', ';'), '"', '');
+            LOCAL str = STRING();
+            str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+            stringToFile(str());
+            
+            IMPORT CSV ';' NOHEADER FROM resultFile() TO supplier, dateLot, order, assignment, date, model, modelTech, color, storage, sim, imei1, imei2, seriesNumber;
+
+            LOCAL item = Item (INTEGER);
+            item(INTEGER i) <- productModel(model(i));
+            
+            LOCAL lot = Lot (INTEGER);
+            lot(INTEGER i) <- lot(imei1(i));
+
+            sim(INTEGER i) <- replace(lower(sim(i)), ' sim', '');
+            storage(INTEGER i) <- replace(lower(storage(i)), ' gb', '');
+
+            FOR [GROUP MAX INTEGER i IF i > 1 BY model(i)](STRING[100] id) AND NOT model(id) NEW m = Model DO {
+                id(m) <- id;
+            }
+            FOR INTEGER x = [GROUP MAX INTEGER i IF i > 1 BY model(i)](STRING[100] id) AND Model m = model(id) AND NOT modelTech(m) DO {
+                modelTech(m) <- STRING[100](modelTech(x));
+            }
+            FOR INTEGER x = [GROUP MAX INTEGER i IF i > 1 BY model(i)](STRING id) AND Model m = model(id) AND NOT productModel(id) NEW p = Product DO {
+                product(m) <- p;
+            }
+            FOR INTEGER x = [GROUP MAX INTEGER i IF i > 1 BY model(i)](STRING id) AND Product p = productModel(id) AND NOT item(x) DO {
+                dataName(p) <- ISTRING[200](model(x));
+                category(p) <- GROUP MAX Category c IF c IS Category;
+            }
+            FOR INTEGER x = [GROUP MAX INTEGER i IF i > 1 BY model(i)](STRING id) AND Product p = productModel(id) DO {
+                color(p) <- ISTRING[100](color(x));
+                storage(p) <- INTEGER(storage(x));
+                sim(p) <- INTEGER(sim(x));
+            }
+
+            item(INTEGER i) <- productModel(model(i));
+            
+            FOR INTEGER x = [GROUP MAX INTEGER i IF i > 1 BY imei1(i)](STRING[100] id) AND NOT lot(id) AND item(x) NEW l = Lot DO {
+                id(l) <- id;
+                product(l) <- item(x);
+                dataVendor(l) <- GROUP MAX Partner p IF name(p) == supplier(x);
+            }
+            FOR INTEGER x = [GROUP MAX INTEGER i IF i > 1 BY imei1(i)](STRING[100] id) AND Lot l = lot(id) DO {
+                order(l) <- STRING[100](order(x));
+                assignment(l) <- STRING[100](assignment(x));
+                imei2(l) <- STRING[100](imei2(x));
+                seriesNumber(l) <- STRING[100](seriesNumber(x));
+            }
+            
+            APPLY;
+        }
+    }
+}
+
+EXTEND FORM integrationData PROPERTIES idImportLotsGsheets(), importLotsGsheets();
+
+DESIGN integrationData {
+    optionsImport {
+        MOVE PROPERTY(idImportLotsGsheets()) AFTER pnl;
+    }
+    actionImport {
+        MOVE PROPERTY(importLotsGsheets());
     }
 }

@@ -52,3 +52,32 @@ NAVIGATOR {
         NEW modelMatching HEADER badged('Модели', countModelsWithoutProduct());
     }
 }
+
+modelTech 'Тех. название' = DATA STRING[100] (Model);
+
+EXTEND FORM modelMatching PROPERTIES(m) modelTech;
+
+modelTech 'Модель (тех. название)' (Item i) = modelTech(defaultModel(i));
+color 'Цвет' = DATA STRING[100] (Item);
+storage 'Память, GB' = DATA INTEGER (Item);
+sim 'Sim' = DATA INTEGER (Item);
+
+EXTEND FORM item
+    PROPERTIES(i) color, storage, sim
+    PROPERTIES(model) modelTech READONLY
+;
+EXTEND FORM items PROPERTIES(i) READONLY modelTech, color, storage, sim;
+
+DESIGN item {
+    inventory {
+        NEW boxes FIRST {
+            horizontal = TRUE;
+            MOVE box1;
+            NEW box2 {
+                MOVE PROPERTY(color(i));
+                MOVE PROPERTY(storage(i));
+                MOVE PROPERTY(sim(i));
+            }
+        }
+    }
+}

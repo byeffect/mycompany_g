@@ -63,3 +63,11 @@ idDefaultModelProduct 'SKU' (Lot l) = idDefaultModel(product(l));
 EXTEND FORM lots
     PROPERTIES (l) READONLY idDefaultModelProduct AFTER nameProduct(l)
 ;
+
+order 'Заказ (производство)' = DATA STRING[100] (Lot);
+assignment 'Наряд (производство)' = DATA STRING[100] (Lot);
+imei2 'IMEI 2' = DATA STRING[100] (Lot);
+seriesNumber 'S\\N' = DATA STRING[100] (Lot);
+
+EXTEND FORM lot PROPERTIES(l) order, assignment, imei2, seriesNumber;
+EXTEND FORM lots PROPERTIES(l) READONLY order, assignment, imei2, seriesNumber;
