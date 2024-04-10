@@ -1,0 +1,108 @@
+MODULE OperationLot;
+
+REQUIRE ManufacturingSettings, Operation, LotCustom, ProductModel;
+
+PRIORITY MasterData;
+
+NAMESPACE Manufacturing;
+
+lot = ABSTRACT Lot (Operation) MATERIALIZED;
+INDEX lot(Operation o), dateTime(o), o;
+idLot 'Код партии' (Operation o) = id(lot(o));
+
+product 'Product' (Operation o) = product(lot(o));
+nameProduct 'Product' (Operation o) = nameProduct(lot(o));
+idDefaultModel 'SKU' (Operation o) = idDefaultModel(product(o));
+
+vendor 'Vendor' (Operation o) = vendor(lot(o));
+nameVendor 'Vendor' (Operation o) = nameVendor(lot(o));
+
+lastOperation (Lot l) = GROUP LAST Operation o ORDER dateTime(o), o BY lot(o) MATERIALIZED INDEXED;
+
+statusLastOperation (Lot l) = status(lastOperation(l)) MATERIALIZED INDEXED;
+nameStatusLastOperation 'Статус последней операции' (Lot l) = name(statusLastOperation(l));
+imagedNameStatusLastOperation 'Статус последней операции' (Lot l) = imagedName(statusLastOperation(l));
+colorStatusLastOperation 'Статус последней операции' (Lot l) = color(statusLastOperation(l));
+dateTimeStatusLastOperation 'Время последней операции' (Lot l) = dateTime(lastOperation(l));
+
+employeeLastOperation 'Сотрудник последней операции' (Lot l) = employee(lastOperation(l));
+
+EXTEND FORM lot
+    OBJECTS o = Operation
+    PROPERTIES(o) dateTime, nameEmployee, nameStatus, description
+    PROPERTIES(o) DELETE
+    ORDERS dateTime(o) DESC
+    FILTERS lot(o) = l;
+;
+
+DESIGN lot {
+    tabs {
+        MOVE BOX(o);
+    }
+}
+
+FORM manufacturingLots 'Платы'
+    OBJECTS l = Lot
+    PROPERTIES(l) READONLY id, nameVendor, nameProduct, idDefaultModelProduct, 
+                           imagedNameStatusLastOperation BACKGROUND colorStatusLastOperation(l), dateTimeStatusLastOperation
+    PROPERTIES(l) NEWSESSION EDIT
+    
+    OBJECTS o = Operation
+    PROPERTIES(o) READONLY idLot, dateTime, nameEmployee, imagedNameStatus BACKGROUND colorStatus(o), 
+                           nameVendor, nameProduct, idDefaultModel
+    
+    FILTERGROUP statuses
+        FILTER 'В работе' statusLastOperation(l) DEFAULT    
+;
+
+@defineDocObjectsForm(manufacturingLots, l, 'Платы');
+
+@defineDateTimeAggregationForm(manufacturingLots, o);
+
+
+DESIGN manufacturingLots {
+    tabbedPane {
+        MOVE BOX(o) {
+            caption = 'Операции';
+        }
+    }
+}
+
+// right pane
+@defineDocFilter(manufacturingLot, Partner, vendor, l, 'Vendor');
+@defineDocFilter(manufacturingLot, OperationStatus, status, l, 'Статус', statusLastOperation);
+@defineDocFilter(manufacturingLot, Employee, employee, l, 'Employee', employeeLastOperation);
+@defineDocFilter(manufacturingLot, Product, product, l, 'Product');
+
+EXTEND FORM manufacturingLots
+    FILTERS vendor(o) = manufacturingLotVendor() OR NOT manufacturingLotVendor()
+    FILTERS status(o) = manufacturingLotStatus() OR NOT manufacturingLotStatus()
+    FILTERS employee(o) = manufacturingLotEmployee() OR NOT manufacturingLotEmployee()
+    FILTERS product(o) = manufacturingLotProduct() OR NOT manufacturingLotProduct()
+;
+
+NAVIGATOR {
+    operations {
+        NEW manufacturingLots;
+    }
+}
+
+
+META defineOperationLot (oper, caption)
+    lot = DATA Lot (Operation###oper) MATERIALIZED INDEXED;
+    lot(Operation###oper o) += lot(o);
+    idLot (Operation###oper o) = id(lot(o));
+
+    INDEX lot(Operation###oper o), dateTime(o), o;
+
+    product 'Product' (Operation###oper o) = product(lot(o));
+    nameProduct 'Product' (Operation###oper o) = nameProduct(lot(o));
+    idDefaultModel 'SKU' (Operation###oper o) = idDefaultModel(product(o));
+    
+    lastOperation###oper (Lot l) = GROUP LAST Operation###oper o ORDER dateTime(o), o BY lot(o) MATERIALIZED INDEXED;
+    dateTimeLastOperation###oper 'Время '##caption (Lot l) = dateTime(lastOperation###oper(l));
+    
+    EXTEND FORM manufacturingLots 
+        PROPERTIES(l) READONLY dateTimeLastOperation###oper
+    ; 
+END

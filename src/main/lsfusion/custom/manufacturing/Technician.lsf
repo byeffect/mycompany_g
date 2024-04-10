@@ -1,13 +1,12 @@
-MODULE ManufacturingEmployee;
+MODULE Technician;
 
 REQUIRE Employee, ManufacturingSettings;
 
-NAMESPACE MasterData;
+PRIORITY MasterData;
+
+NAMESPACE Manufacturing;
 
 CLASS Technician 'Техник' : Employee;
-
-WHEN CHANGED(firstName(Technician e)) DO firstName[Contact](e) <- firstName(e);
-WHEN CHANGED(lastName(Technician e)) DO lastName[Contact](e) <- lastName(e);
 
 CLASS Qualification 'Квалификация' {
     seniorEngineer 'Ведущий инженер',
@@ -33,36 +32,32 @@ dropImage 'Удалить фото'(Technician t)  {
     image(t) <- NULL;
 }
 
-FORM technician 'Техник'
-    OBJECTS t = Technician PANEL 
-    PROPERTIES(t) firstName, lastName, login, sha256Password ON CHANGE changeSHA256Password(t), nameQualification,
-        startDate, experience, image, loadImage, dropImage
-    
-    EDIT Technician OBJECT t
+EXTEND FORM employee
+    PROPERTIES(e) nameQualification, startDate, experience, 
+                  image, loadImage, dropImage
 ;
 
-DESIGN technician {
-    OBJECTS {
-        NEW main {
-            MOVE PROPERTY(firstName(t));
-            MOVE PROPERTY(lastName(t));
-            MOVE PROPERTY(login(t));
-            MOVE PROPERTY(sha256Password(t));
-            MOVE PROPERTY(nameQualification(t));
-            MOVE PROPERTY(startDate(t));
-            MOVE PROPERTY(experience(t));
+DESIGN employee {
+    header {
+        NEW technician {
+            caption = 'Техник';
+            MOVE PROPERTY(nameQualification(e));
+            MOVE PROPERTY(startDate(e));
+            MOVE PROPERTY(experience(e));
         }
-        NEW image {
-            fill = 2;
-            MOVE PROPERTY(image(t)) { 
-                fill = 1; 
-                panelCaptionVertical = TRUE; 
+        details {
+            NEW image {
                 caption = 'Фото';
-            }
-            NEW imageActions {
-                horizontal = TRUE;
-                MOVE PROPERTY(loadImage(t));
-                MOVE PROPERTY(dropImage(t));
+                MOVE PROPERTY(image(e)) {
+                    fill = 1;
+                    panelCaptionVertical = TRUE;
+                    caption = 'Фото';
+                }
+                NEW imageActions {
+                    horizontal = TRUE;
+                    MOVE PROPERTY(loadImage(e));
+                    MOVE PROPERTY(dropImage(e));
+                }
             }
         }
     }
@@ -72,12 +67,17 @@ FORM technicians 'Техники'
     OBJECTS t = Technician
     PROPERTIES(t) READONLY firstName, lastName, nameQualification, startDate, experience
     PROPERTIES(t) NEWSESSION NEW, EDIT, DELETE
+;
+
+FORM dialogTechnicians 'Техники'
+    OBJECTS t = Technician
+    PROPERTIES(t) READONLY firstName, lastName, nameQualification
 
     LIST Technician OBJECT t
 ;
 
 NAVIGATOR {
-    manufacturingMasterData {
+    settings {
         NEW technicians;
     }
 }

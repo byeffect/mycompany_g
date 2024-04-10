@@ -1,0 +1,15 @@
+MODULE OperationReceipt;
+
+REQUIRE OperationLot;
+
+NAMESPACE Manufacturing;
+
+EXTEND CLASS OperationStatus {
+    received 'Принят'
+}
+color (OperationStatus s) += WHEN s = OperationStatus.received THEN RGB(192,212,220);
+
+
+@defineOperation(receipt, 'Прием товара', received);
+
+@defineOperationLot(receipt, 'приема');

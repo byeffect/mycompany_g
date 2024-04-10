@@ -1,0 +1,101 @@
+MODULE OperationTransferMobile;
+
+REQUIRE ManufacturingSettings,
+        OperationTransfer, OperationLot, Mobile, InventoryCustom;
+
+PRIORITY MasterData;
+
+NAMESPACE Manufacturing;
+
+html '' (OperationTransfer o) = HTML ('<div>' + (CONCAT '&nbsp;',
+    time(o),
+    '<b>' + nameProduct(o) + '</b>',
+    '(' + idDefaultModel(o) + ')',
+    '<font size="-2">' + idLot(o) + '</font>',
+    '<i>' + nameTechnician(o) + '</i>') + '</div>');
+
+FORM operationTransferMobile 'Передача технику'
+    OBJECTS t = Technician PANEL NULL
+    PROPERTIES(t) name SELECTOR 
+    
+    OBJECTS o = OperationTransfer
+    PROPERTIES(o) READONLY html
+    PROPERTIES(o) NEWSESSION deleteLine = DELETE
+
+    FILTERS employee(o) = currentUser()
+
+    FILTERGROUP dates
+        FILTER 'Сегодня' date(o) = currentDate() DEFAULT
+;
+
+DESIGN operationTransferMobile {
+    OBJECTS {
+        class = '';
+        MOVE PROPERTY(name(t)) {
+            caption = '';
+            placeholder = 'Техник';
+            alignment = STRETCH;
+            focusable = FALSE;
+        }
+        MOVE FILTERGROUP(dates);
+
+        MOVE GRID(o);
+        REMOVE BOX(o);
+
+        MOVE PROPERTY(deleteLine) { alignment = STRETCH; }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+scanBarcode(OperationTransfer o, Technician t) {
+    INPUT b = STRING DO {
+        FOR Lot l = lot(b) DO {
+            IF NOT statusLastOperation(l) = OperationStatus.received THEN {
+                beep(warningSound(), TRUE);
+                MESSAGE 'Партия находится не в статусе Принят';
+            } ELSE {
+                IF NOT t IS Technician THEN {
+                    beep(warningSound(), TRUE);
+                    MESSAGE 'Не выбран Техник';
+                } ELSE {
+                    NEWSESSION {
+                        NEW no = OperationTransfer {
+                            lot(no) <- l;
+                            technician(no) <- t;
+                            SEEK operationTransferMobile.o = no;
+                        }
+                        APPLY;
+                        IF NOT canceled() THEN beep(successSound(), TRUE);
+                    }
+                }
+            }
+        } ELSE {
+            beep(warningSound(), TRUE);
+            MESSAGE 'Не найден код партии';
+        }
+    }
+}
+
+EXTEND FORM operationTransferMobile
+    PROPERTIES() barcodeNumeric ON CHANGE scanBarcode(o, t)
+;
+DESIGN operationTransferMobile {
+    OBJECTS {
+        MOVE PROPERTY(barcodeNumeric()) FIRST {
+            caption = '';
+            placeholder = 'Введите штрих-код';
+            alignment = STRETCH;
+        }
+    }
+}
+
+showMobileForms() + {
+    IF permit(currentUser(), navigatorElementCanonicalName('Manufacturing.operationTransferMobile')) THEN
+        SHOW operationTransferMobile NOWAIT;
+}
+
+NAVIGATOR {
+    operations {
+        NEW operationTransferMobile;
+    }
+}

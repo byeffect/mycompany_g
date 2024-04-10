@@ -1,0 +1,31 @@
+MODULE OperationTransfer;
+
+REQUIRE OperationLot, OperationReceipt, Technician;
+
+PRIORITY MasterData;
+
+NAMESPACE Manufacturing;
+
+EXTEND CLASS OperationStatus {
+    transfered 'Передан технику'
+}
+color (OperationStatus s) += WHEN s = OperationStatus.transfered THEN RGB(197,224,205);
+
+@defineOperation(transfer, 'Передача технику', transfered);
+@defineOperationLot(transfer, 'передачи технику');
+
+technician = DATA Technician (OperationTransfer) INDEXED;
+nameTechnician 'Техник' (OperationTransfer o) = name(technician(o));
+
+technicianLastOperationTransfer 'Техник' (Lot l) = technician(lastOperationTransfer(l));
+nameTechnicianLastOperationTransfer 'Техник' (Lot l) = nameTechnician(lastOperationTransfer(l));
+
+@defineDocFilter(manufacturingLot, Technician, technician, l, 'Техник', technicianLastOperationTransfer);
+
+EXTEND FORM manufacturingLots
+    PROPERTIES(l) READONLY nameTechnicianLastOperationTransfer AFTER dateTimeLastOperationTransfer(l)
+
+    FILTERS technicianLastOperationTransfer(lot(o)) = manufacturingLotTechnician() OR NOT manufacturingLotTechnician()
+;
+
+description (OperationTransfer o) += ISTRING(nameTechnician(o)); 

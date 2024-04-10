@@ -1,0 +1,83 @@
+MODULE OperationReceiptMobile;
+
+REQUIRE ManufacturingSettings,
+        OperationReceipt, OperationLot, Mobile, InventoryCustom;
+
+NAMESPACE Manufacturing;
+
+html '' (OperationReceipt o) = HTML ('<div>' + (CONCAT '&nbsp;',
+    time(o),
+    '<b>' + nameProduct(o) + '</b>',
+    '(' + idDefaultModel(o) + ')',
+    '<font size="-2">' + idLot(o) + '</font>') + '</div>');
+
+FORM operationReceiptMobile 'Прием'
+    OBJECTS o = OperationReceipt
+    PROPERTIES(o) READONLY html
+    PROPERTIES(o) NEWSESSION deleteLine = DELETE
+
+    FILTERS employee(o) = currentUser()
+    
+    FILTERGROUP dates
+        FILTER 'Сегодня' date(o) = currentDate() DEFAULT
+;
+
+DESIGN operationReceiptMobile {
+    OBJECTS {
+        class = '';
+        MOVE FILTERGROUP(dates);
+
+        MOVE GRID(o);
+        REMOVE BOX(o);
+
+        MOVE PROPERTY(deleteLine) { alignment = STRETCH; }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+scanBarcode(OperationReceipt o) {
+    INPUT b = STRING DO {
+        FOR Lot l = lot(b) DO {
+            IF NOT statusLastOperation(l) = OperationStatus.ordered THEN {
+                beep(warningSound(), TRUE);
+                MESSAGE 'Партия находится не в статусе Заказан';
+            } ELSE {
+                NEWSESSION {
+                    NEW no = OperationReceipt {
+                        lot(no) <- l;
+                        SEEK operationReceiptMobile.o = no;
+                    }
+                    APPLY;
+                    IF NOT canceled() THEN beep(successSound(), TRUE);
+                }
+            }
+        } ELSE {
+            beep(warningSound(), TRUE);
+            MESSAGE 'Не найден код партии';
+        }
+    }
+}
+
+EXTEND FORM operationReceiptMobile
+    PROPERTIES() barcodeNumeric ON CHANGE scanBarcode(o)
+;
+DESIGN operationReceiptMobile {
+    OBJECTS {
+        MOVE PROPERTY(barcodeNumeric()) FIRST {
+            caption = '';
+            placeholder = 'Введите штрих-код';
+            alignment = STRETCH;
+        }
+    }
+}
+
+showMobileForms() + {
+    IF permit(currentUser(), navigatorElementCanonicalName('Manufacturing.operationReceiptMobile')) THEN
+        SHOW operationReceiptMobile NOWAIT;
+}
+
+NAVIGATOR {
+    operations {
+        NEW operationReceiptMobile;
+    }
+}

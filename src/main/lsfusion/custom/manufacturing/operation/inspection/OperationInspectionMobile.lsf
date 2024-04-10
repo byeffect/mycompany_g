@@ -1,0 +1,136 @@
+MODULE OperationInspectionMobile;
+
+REQUIRE ManufacturingSettings,
+        OperationInspection, OperationLot, Mobile, InventoryCustom;
+
+PRIORITY MasterData;
+
+NAMESPACE Manufacturing;
+
+html '' (OperationInspection o) = HTML ('<div>' + (CONCAT '&nbsp;',
+    time(o),
+    '<b>' + nameProduct(o) + '</b>',
+    '(' + idDefaultModel(o) + ')',
+    '<font size="-2">' + idLot(o) + '</font>',
+    '<font size="-1">' + description(o) + '</font>') + '</div>');
+
+FORM operationInspectionMobile 'Инспекция'
+    OBJECTS o = OperationInspection
+    PROPERTIES(o) READONLY html BACKGROUND IF passed(o) THEN RGB(192,255,192) ELSE RGB(255,192,192)
+    PROPERTIES(o) NEWSESSION deleteLine = DELETE
+
+    FILTERS employee(o) = currentUser()
+
+    FILTERGROUP dates
+        FILTER 'Сегодня' date(o) = currentDate() DEFAULT
+;
+
+DESIGN operationInspectionMobile {
+    OBJECTS {
+        class = '';
+        MOVE FILTERGROUP(dates);
+
+        MOVE GRID(o);
+        REMOVE BOX(o);
+
+        MOVE PROPERTY(deleteLine) { alignment = STRETCH; }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+failedInspection = DATA LOCAL BOOLEAN();
+FORM operationInspectionResult 'Результат проверки'
+    OBJECTS fl = BOOLEAN PANEL
+    
+    OBJECTS o = OperationInspection PANEL
+    PROPERTIES(o) SHOWIF failedInspection() nameReason, comment SHOWIF needComment(reason(o))
+
+    PROPERTIES pass 'PASS' = {
+        passed(o) <- TRUE;
+        formOk();
+    } SHOWIF NOT failedInspection()
+
+    PROPERTIES fail 'FAIL' = {
+        failedInspection() <- TRUE;
+    } SHOWIF NOT failedInspection()
+    
+    PROPERTIES finishFail 'FAIL' = {
+        check();
+        IF NOT canceled() THEN formOk();
+    } SHOWIF failedInspection()
+;
+
+DESIGN operationInspectionResult {
+    height = 400;
+    OBJECTS {
+        REMOVE BOX(o);
+        NEW failReason {
+            fill = 1;
+            MOVE PROPERTY(nameReason(o)) {
+                caption = '';
+                placeholder = 'Причина';
+                notNull = TRUE;
+                alignment = STRETCH;
+            }
+            MOVE PROPERTY(comment(o)) {
+                caption = '';
+                placeholder = 'Комментарий';
+                notNull = TRUE;
+                fill = 1;
+            }
+        }
+        REMOVE PROPERTY(formOk());
+        REMOVE PROPERTY(formRefresh());
+        MOVE PROPERTY(pass) { fill = 1; background = RGB(128,255,128); alignment = STRETCH; }
+        MOVE PROPERTY(fail) { fill = 1; background = RGB(255,128,128); alignment =STRETCH; }
+        MOVE PROPERTY(finishFail) { background = RGB(255,128,128); alignment = STRETCH; }
+        MOVE PROPERTY(formClose()) { alignment = STRETCH; }
+    }
+}
+
+scanBarcode(OperationInspection o) {
+    INPUT b = STRING DO {
+        FOR Lot l = lot(b) DO {
+            IF NOT statusLastOperation(l) = OperationStatus.transfered THEN {
+                beep(warningSound(), TRUE);
+                MESSAGE 'Партия находится не в статусе Передан технику';
+            } ELSE {
+                NEWSESSION {
+                    NEW no = OperationInspection {
+                        lot(no) <- l;
+                        DIALOG operationInspectionResult OBJECTS o = no NOMANAGESESSION DO {
+                            APPLY;
+                        } 
+                    }
+                }
+            }
+        } ELSE {
+            beep(warningSound(), TRUE);
+            MESSAGE 'Не найден код партии';
+        }
+    }
+}
+
+EXTEND FORM operationInspectionMobile
+    PROPERTIES() barcodeNumeric ON CHANGE scanBarcode(o)
+;
+DESIGN operationInspectionMobile {
+    OBJECTS {
+        MOVE PROPERTY(barcodeNumeric()) FIRST {
+            caption = '';
+            placeholder = 'Введите штрих-код';
+            alignment = STRETCH;
+        }
+    }
+}
+
+showMobileForms() + {
+    IF permit(currentUser(), navigatorElementCanonicalName('Manufacturing.operationInspectionMobile')) THEN
+        SHOW operationInspectionMobile NOWAIT;
+}
+
+NAVIGATOR {
+    operations {
+        NEW operationInspectionMobile;
+    }
+}

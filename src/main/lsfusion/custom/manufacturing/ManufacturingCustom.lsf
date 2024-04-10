@@ -1,0 +1,8 @@
+MODULE ManufacturingCustom;
+
+REQUIRE OperationOrder,
+        OperationReceipt, OperationReceiptMobile,
+        OperationTransfer, OperationTransferMobile,
+        OperationInspection, OperationInspectionMobile;
+
+NAMESPACE Manufacturing;

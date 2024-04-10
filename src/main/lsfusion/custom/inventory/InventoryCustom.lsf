@@ -1,6 +1,6 @@
 MODULE InventoryCustom;
 
-REQUIRE InventorySettings;
+REQUIRE InventorySettings, Sound;
 
 NAMESPACE Inventory;
 

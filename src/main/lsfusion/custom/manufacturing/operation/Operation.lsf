@@ -1,0 +1,49 @@
+MODULE Operation;
+
+REQUIRE Employee, Icon, DateUtils;
+
+PRIORITY MasterData;
+
+NAMESPACE Manufacturing;
+
+CLASS OperationStatus 'Статус операции' {
+    ordered 'Заказан'
+}
+
+name '{First_name}' (OperationStatus s) = staticCaption(s) IF s IS OperationStatus CHARWIDTH 12;
+imagedName '{First_name}' (OperationStatus s) = imagedCaption(s) IF s IS OperationStatus CHARWIDTH 12;
+
+color 'Color' = ABSTRACT CASE COLOR (OperationStatus) MATERIALIZED;
+color (OperationStatus s) += WHEN s = OperationStatus.ordered THEN RGB(242,215,202);
+
+CLASS ABSTRACT Operation 'Операция';
+TABLE operation (Operation);
+
+dateTime 'Время' = ABSTRACT DATETIME (Operation) MATERIALIZED;
+@defineDateTimeAggregation(Operation);
+
+employee 'Сотрудник' = ABSTRACT Employee (Operation) MATERIALIZED;
+nameEmployee 'Сотрудник' (Operation o) = Authentication.name(employee(o));
+
+status 'Status' = ABSTRACT OperationStatus (Operation) MATERIALIZED INDEXED;
+nameStatus 'Status' (Operation o) = name(status(o));
+imagedNameStatus 'Status' (Operation o) = imagedName(status(o));
+colorStatus 'Color' (Operation o) = color(status(o));
+
+description 'Описание' = ABSTRACT ISTRING (Operation) MATERIALIZED;
+
+META defineOperation (id, caption, statusId)
+    CLASS Operation###id caption : Operation;
+
+    dateTime 'Время' = DATA DATETIME (Operation###id) NONULL INDEXED;
+    dateTime(Operation###id o) <- currentDateTime() WHEN SET(o IS Operation###id);
+    date 'Дата' (Operation###id o) = DATE(dateTime(o)) MATERIALIZED INDEXED;
+    time 'Время' (Operation###id o) = TIME(dateTime(o));
+    dateTime(Operation###id o) += dateTime(o);
+
+    employee = DATA Employee (Operation###id) NONULL;
+    employee(Operation###id o) <- currentUser() WHEN SET(o IS Operation###id);
+    employee(Operation###id o) += employee(o);
+
+    status(Operation###id o) += OperationStatus.statusId IF o IS Operation###id;    
+END

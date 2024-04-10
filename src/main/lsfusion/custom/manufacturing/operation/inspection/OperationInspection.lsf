@@ -1,0 +1,74 @@
+MODULE OperationInspection;
+
+REQUIRE OperationLot, OperationTransfer, ManufacturingSettings;
+
+PRIORITY MasterData;
+
+NAMESPACE Manufacturing;
+
+EXTEND CLASS OperationStatus {
+    inspectioned 'Проверен'
+}
+color (OperationStatus s) += WHEN s = OperationStatus.inspectioned THEN RGB(187,242,210);
+
+@defineOperation(inspection, 'Инспекция', inspectioned);
+@defineOperationLot(inspection, 'инспекции');
+
+passed 'Прошел' = DATA BOOLEAN (OperationInspection);
+failed 'Не прошел' (OperationInspection o) = o IS OperationInspection AND NOT passed(o);
+
+nameResult 'Результат' (OperationInspection o ) = IF passed(o) THEN 'Прошел' ELSE 'Не прошел';
+
+// причины
+
+CLASS InspectionReason 'Причина отбраковки';
+TABLE inspectionReason (InspectionReason);
+
+name '{master.data.name}' = DATA ISTRING[100] (InspectionReason) CHARWIDTH 15;
+needComment 'Требуется комментарий' = DATA BOOLEAN (InspectionReason);
+
+FORM inspectionReason 'Причина отбраковки'
+    OBJECTS o = InspectionReason PANEL
+    PROPERTIES(o) name, needComment
+    
+    EDIT InspectionReason OBJECT o
+;
+
+FORM dialogInspectionReasons 'Причина отбраковки'
+    OBJECTS o = InspectionReason
+    PROPERTIES(o) READONLY name
+    
+    LIST InspectionReason OBJECT o
+;
+
+EXTEND FORM options
+    OBJECTS ir = InspectionReason
+    PROPERTIES(ir) READONLY name, needComment
+    PROPERTIES(ir) NEWSESSION NEW, EDIT, DELETE
+;
+
+DESIGN options {
+    tabbedPane {
+        MOVE BOX(ir);
+    }
+}
+
+reason = DATA InspectionReason (OperationInspection);
+nameReason 'Причина отбраковки' (OperationInspection o) = name(reason(o));
+
+CONSTRAINT failed(OperationInspection o) AND NOT reason(o)
+    MESSAGE 'Не задана причина отбраковки';
+
+comment 'Комментарий'  = DATA TEXT (OperationInspection);
+CONSTRAINT SETCHANGED(reason(OperationInspection o)) AND needComment(reason(o)) AND NOT comment(o)
+    MESSAGE 'Не задан комментарий причины отбраковки';
+
+description (OperationInspection o) += ISTRING(CONCAT ' ', nameResult(o), '(' + nameReason(o) + ')', comment(o));
+
+nameResultLastOperationInspection 'Результат проверки' (Lot l) = nameResult(lastOperationInspection(l));
+nameReasonLastOperationInspection 'Причина отбраковки' (Lot l) = nameReason(lastOperationInspection(l));
+commentLastOperationInspection 'Комментарий проверки' (Lot l) = ISTRING(comment(lastOperationInspection(l)));
+EXTEND FORM manufacturingLots
+    PROPERTIES(l) AFTER dateTimeLastOperationInspection(l) READONLY 
+        nameResultLastOperationInspection, nameReasonLastOperationInspection, commentLastOperationInspection
+;
