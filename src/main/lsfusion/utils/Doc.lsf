@@ -429,12 +429,12 @@ META defineDocFilter(doc, cls, property, obj, capt, filterProperty)
     doc###property = DATA LOCAL NESTED cls ();
     name###doc###property capt = name(doc###property());
 
-    EXTEND FORM doc##s 
+    EXTEND FORM doc##s
         PROPERTIES() name###doc###property
-        
+
         FILTERS filterProperty(obj) = doc###property() OR NOT doc###property()
     ;
-    
+
     DESIGN doc##s {
         filters {
             MOVE PROPERTY(name###doc###property()) { caption = ''; placeholder = capt; };
