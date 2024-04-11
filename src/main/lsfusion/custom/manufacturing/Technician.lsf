@@ -24,17 +24,8 @@ WHEN SET(Technician t IS Technician) AND NOT startDate(t) DO startDate(t) <- cur
 
 experience 'Стаж работы (лет)' (Technician t) = extractYear(currentDate()) - extractYear(startDate(t));
 
-image = DATA IMAGEFILE (Technician);
-loadImage 'Загрузить фото' (Technician t)  {
-    INPUT = image(t) CHANGE;
-}
-dropImage 'Удалить фото'(Technician t)  {
-    image(t) <- NULL;
-}
-
 EXTEND FORM employee
-    PROPERTIES(e) nameQualification, startDate, experience, 
-                  image, loadImage, dropImage
+    PROPERTIES(e) nameQualification, startDate, experience
 ;
 
 DESIGN employee {
@@ -44,21 +35,6 @@ DESIGN employee {
             MOVE PROPERTY(nameQualification(e));
             MOVE PROPERTY(startDate(e));
             MOVE PROPERTY(experience(e));
-        }
-        details {
-            NEW image {
-                caption = 'Фото';
-                MOVE PROPERTY(image(e)) {
-                    fill = 1;
-                    panelCaptionVertical = TRUE;
-                    caption = 'Фото';
-                }
-                NEW imageActions {
-                    horizontal = TRUE;
-                    MOVE PROPERTY(loadImage(e));
-                    MOVE PROPERTY(dropImage(e));
-                }
-            }
         }
     }
 }
