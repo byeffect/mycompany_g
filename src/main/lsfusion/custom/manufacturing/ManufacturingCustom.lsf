@@ -3,6 +3,7 @@ MODULE ManufacturingCustom;
 REQUIRE OperationOrder,
         OperationReceipt, OperationReceiptMobile,
         OperationTransfer, OperationTransferMobile,
+        OperationProduction, OperationProductionMobile,
         OperationInspection, OperationInspectionMobile;
 
 NAMESPACE Manufacturing;

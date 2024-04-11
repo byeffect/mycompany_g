@@ -1,6 +1,6 @@
 MODULE OperationInspection;
 
-REQUIRE OperationLot, OperationTransfer, ManufacturingSettings;
+REQUIRE OperationLot, OperationProduction, ManufacturingSettings;
 
 PRIORITY MasterData;
 

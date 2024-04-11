@@ -91,9 +91,9 @@ DESIGN operationInspectionResult {
 scanBarcode(OperationInspection o) {
     INPUT b = STRING DO {
         FOR Lot l = lot(b) DO {
-            IF NOT statusLastOperation(l) = OperationStatus.transfered THEN {
+            IF NOT statusLastOperation(l) = OperationStatus.productionFinished THEN {
                 beep(warningSound(), TRUE);
-                MESSAGE 'Партия находится не в статусе Передан технику';
+                MESSAGE 'Партия находится не в статусе Окончание работ';
             } ELSE {
                 NEWSESSION {
                     NEW no = OperationInspection {

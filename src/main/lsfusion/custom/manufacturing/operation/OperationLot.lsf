@@ -10,6 +10,12 @@ lot = ABSTRACT Lot (Operation) MATERIALIZED;
 INDEX lot(Operation o), dateTime(o), o;
 idLot 'Код партии' (Operation o) = id(lot(o));
 
+prevOperation (Operation o) = PARTITION PREV o ORDER dateTime(o), o BY lot(o) MATERIALIZED INDEXED;
+dateTimePrevOperation 'Время предыдущей операции' (Operation o) = dateTime(prevOperation(o));
+duration 'Длительность (сек.)' (Operation o) = NUMERIC[10,0](subtractSeconds(dateTime(prevOperation(o)), dateTime(o)));
+durationMinutes 'Длительность (мин.)' (Operation o) = NUMERIC[11,2](duration(o) / 60);
+durationHours 'Длительность (часов)' (Operation o) = NUMERIC[11,3](duration(o) / 3600);
+
 product 'Product' (Operation o) = product(lot(o));
 nameProduct 'Product' (Operation o) = nameProduct(lot(o));
 idDefaultModel 'SKU' (Operation o) = idDefaultModel(product(o));
@@ -48,7 +54,7 @@ FORM manufacturingLots 'Платы'
     PROPERTIES(l) NEWSESSION EDIT
     
     OBJECTS o = Operation
-    PROPERTIES(o) READONLY idLot, dateTime, nameEmployee, imagedNameStatus BACKGROUND colorStatus(o), 
+    PROPERTIES(o) READONLY idLot, dateTimePrevOperation, dateTime, duration, durationMinutes, durationHours, nameEmployee, imagedNameStatus BACKGROUND colorStatus(o), 
                            nameVendor, nameProduct, idDefaultModel
     
     FILTERGROUP statuses
@@ -91,7 +97,7 @@ NAVIGATOR {
 META defineOperationLot (oper, caption)
     lot = DATA Lot (Operation###oper) MATERIALIZED INDEXED;
     lot(Operation###oper o) += lot(o);
-    idLot (Operation###oper o) = id(lot(o));
+    idLot 'Lot' (Operation###oper o) = id(lot(o));
 
     INDEX lot(Operation###oper o), dateTime(o), o;
 

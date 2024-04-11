@@ -20,6 +20,8 @@ nameTechnician 'Техник' (OperationTransfer o) = name(technician(o));
 technicianLastOperationTransfer 'Техник' (Lot l) = technician(lastOperationTransfer(l));
 nameTechnicianLastOperationTransfer 'Техник' (Lot l) = nameTechnician(lastOperationTransfer(l));
 
+countLotTransfer (Technician t) = GROUP SUM 1 IF technicianLastOperationTransfer(Lot l) = t AND statusLastOperation(l) = OperationStatus.transfered;
+
 @defineDocFilter(manufacturingLot, Technician, technician, l, 'Техник', technicianLastOperationTransfer);
 
 EXTEND FORM manufacturingLots

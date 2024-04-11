@@ -1,0 +1,128 @@
+MODULE OperationProductionMobile;
+
+REQUIRE ManufacturingSettings,
+        OperationProduction, OperationLot, Mobile, InventoryCustom;
+
+NAMESPACE Manufacturing;
+
+html '' (OperationProduction o) = HTML ('<div>' + (CONCAT '&nbsp;',
+    time(o),
+    '<b>' + nameProduct(o) + '</b>',
+    '(' + idDefaultModel(o) + ')',
+    '<font size="-2">' + idLot(o) + '</font>') + '</div>');
+
+htmlProduction '' (Lot l) = HTML ('<div>' + (CONCAT '&nbsp;', 
+    '<b>' + nameProduct(l) + '</b>', 
+    '<font size="-2">' + id(l) + '</font>', 
+    '(' + idDefaultModelProduct(l) + ')') + '</div>');
+
+FORM operationProductionMobile 'Техоперации'
+    OBJECTS o = OperationProduction
+    PROPERTIES(o) READONLY html BACKGROUND colorStatus(o)
+    PROPERTIES(o) NEWSESSION deleteLine = DELETE
+    FILTERS employee(o) = currentUser()
+
+    OBJECTS tl = Lot
+    PROPERTIES(tl) READONLY htmlProduction
+    FILTERS statusLastOperation(tl) = OperationStatus.transfered,
+            technicianLastOperationTransfer(tl) = currentUser()
+
+    OBJECTS fl = Lot
+    PROPERTIES(fl) READONLY htmlProduction
+    FILTERS statusLastOperation(fl) = OperationStatus.productionFinished,
+            technicianLastOperationTransfer(fl) = currentUser()
+
+    FILTERGROUP dates
+        FILTER 'Сегодня' date(o) = currentDate() DEFAULT
+;
+
+DESIGN operationProductionMobile {
+    OBJECTS {
+        class = '';
+        NEW pane {
+            fill = 1;
+            tabbed = TRUE;
+            NEW operations {
+                caption = 'Операции';
+                MOVE FILTERGROUP(dates);
+
+                MOVE GRID(o);
+                REMOVE BOX(o);
+
+                MOVE PROPERTY(deleteLine) { alignment = STRETCH; }
+            }
+            NEW transfered {
+                caption = badged('Полученные', countLotTransfer(currentUser()));
+                MOVE GRID(tl);
+                REMOVE BOX(tl);
+            }
+            NEW productionFinished {
+                caption = badged('Переданные', countLotProductionFinish(currentUser()));
+                MOVE GRID(fl);
+                REMOVE BOX(fl);
+            }
+        }
+    }
+    REMOVE TOOLBARBOX;
+}
+
+scanBarcode(OperationProduction o) {
+    INPUT b = STRING DO {
+        FOR Lot l = lot(b) DO {
+            IF statusLastOperation(l) = OperationStatus.transfered THEN {
+                IF NOT currentUser() = technicianLastOperationTransfer(l) THEN {
+                    beep(warningSound(), TRUE);
+                    MESSAGE 'Партия назначена на другого техника';
+                } ELSE {
+                    NEWSESSION {
+                        NEW no = OperationProductionStarted {
+                            lot(no) <- l;
+                            SEEK operationProductionMobile.o = no;
+                        }
+                        APPLY;
+                        IF NOT canceled() THEN beep(successSound(), TRUE);
+                    }
+                }
+            } ELSE {
+                IF statusLastOperation(l) = OperationStatus.productionStarted THEN {
+                    NEW no = OperationProductionFinished {
+                        lot(no) <- l;
+                        SEEK operationProductionMobile.o = no;
+                    }
+                    APPLY;
+                    IF NOT canceled() THEN beep(successSound(), TRUE);
+                } ELSE {
+                    beep(warningSound(), TRUE);
+                    MESSAGE 'Партия находится в неправильном статусе';
+                }
+            }
+        } ELSE {
+            beep(warningSound(), TRUE);
+            MESSAGE 'Не найден код партии';
+        }
+    }
+}
+
+EXTEND FORM operationProductionMobile
+    PROPERTIES() barcodeNumeric ON CHANGE scanBarcode(o)
+;
+DESIGN operationProductionMobile {
+    OBJECTS {
+        MOVE PROPERTY(barcodeNumeric()) FIRST {
+            caption = '';
+            placeholder = 'Введите штрих-код';
+            alignment = STRETCH;
+        }
+    }
+}
+
+showMobileForms() + {
+    IF permit(currentUser(), navigatorElementCanonicalName('Manufacturing.operationProductionMobile')) THEN
+        SHOW operationProductionMobile NOWAIT;
+}
+
+NAVIGATOR {
+    operations {
+        NEW operationProductionMobile;
+    }
+}

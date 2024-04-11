@@ -1,0 +1,46 @@
+MODULE OperationProduction;
+
+REQUIRE OperationLot, OperationTransfer;
+
+NAMESPACE Manufacturing;
+
+EXTEND CLASS OperationStatus {
+    productionStarted 'Старт работ'
+}
+color (OperationStatus s) += WHEN s = OperationStatus.productionStarted THEN RGB(183,224,164);
+
+@defineOperation(ProductionStarted, 'Старт работ', productionStarted);
+
+@defineOperationLot(productionStarted, 'старта работ');
+
+EXTEND CLASS OperationStatus {
+    productionFinished 'Окончание работ'
+}
+color (OperationStatus s) += WHEN s = OperationStatus.productionFinished THEN RGB(227,194,140);
+
+@defineOperation(ProductionFinished, 'Старт работ', productionFinished);
+
+@defineOperationLot(productionFinished, 'окончания работ');
+
+countLotProductionFinish (Technician t) = GROUP SUM 1 IF technicianLastOperationTransfer(Lot l) = t AND statusLastOperation(l) = OperationStatus.productionFinished;
+
+CLASS ABSTRACT OperationProduction 'Производство';
+
+EXTEND CLASS OperationProductionStarted : OperationProduction;
+EXTEND CLASS OperationProductionFinished : OperationProduction;
+
+date 'Дата' (OperationProduction o) = MULTI date[OperationProductionStarted](o), date[OperationProductionFinished](o);
+time 'Время' (OperationProduction o) = MULTI time[OperationProductionStarted](o), time[OperationProductionFinished](o);
+
+lot (OperationProduction o) = MULTI lot[OperationProductionStarted](o), lot[OperationProductionFinished](o);
+idLot 'Lot' (OperationProduction o) = id(lot(o));
+
+product 'Время' (OperationProduction o) = MULTI product[OperationProductionStarted](o), product[OperationProductionFinished](o);
+nameProduct 'Product' (OperationProduction o) = nameProduct(lot(o));
+idDefaultModel 'SKU' (OperationProduction o) = idDefaultModel(product(o));
+
+employee 'Время' (OperationProduction o) = MULTI employee[OperationProductionStarted](o), employee[OperationProductionFinished](o);
+
+status (OperationProduction o) = MULTI OperationStatus.productionStarted IF o IS OperationProductionStarted,
+                                                          OperationStatus.productionFinished IF o IS OperationProductionFinished;
+colorStatus (OperationProduction o) = color(status(o));
