@@ -1,0 +1,18 @@
+MODULE OperationOrder;
+
+REQUIRE OperationLot;
+
+NAMESPACE Manufacturing;
+
+@defineOperation(order, 'Первичная инспекция', ordered);
+@defineOperationLot(order, 'первичной инспекции');
+
+newOperationOrder 'Первичная инспекция' (Lot l) {
+    NEW o = OperationOrder {
+        lot(o) <- l;
+    }
+}
+
+EXTEND FORM lot
+    PROPERTIES(l) newOperationOrder DRAW o TOOLBAR
+;

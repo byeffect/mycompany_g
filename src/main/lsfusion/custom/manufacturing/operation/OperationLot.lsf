@@ -95,16 +95,22 @@ NAVIGATOR {
 
 
 META defineOperationLot (oper, caption)
-    lot = DATA Lot (Operation###oper) MATERIALIZED INDEXED;
+    lot 'Lot' = DATA Lot (Operation###oper) NONULL MATERIALIZED INDEXED;
     lot(Operation###oper o) += lot(o);
     idLot 'Lot' (Operation###oper o) = id(lot(o));
+
+    imei2 'IMEI2' (Operation###oper o) = imei2(lot(o));
+    seriesNumber 'S\\N' (Operation###oper o) = seriesNumber(lot(o));
 
     INDEX lot(Operation###oper o), dateTime(o), o;
 
     product 'Product' (Operation###oper o) = product(lot(o));
     nameProduct 'Product' (Operation###oper o) = nameProduct(lot(o));
     idDefaultModel 'SKU' (Operation###oper o) = idDefaultModel(product(o));
-    
+
+    vendor 'Vendor' (Operation###oper o) = vendor(lot(o));
+    nameVendor 'Vendor' (Operation###oper o) = nameVendor(lot(o));
+
     lastOperation###oper (Lot l) = GROUP LAST Operation###oper o ORDER dateTime(o), o BY lot(o) MATERIALIZED INDEXED;
     dateTimeLastOperation###oper 'Время '##caption (Lot l) = dateTime(lastOperation###oper(l));
     

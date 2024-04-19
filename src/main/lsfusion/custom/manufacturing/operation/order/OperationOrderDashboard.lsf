@@ -1,0 +1,96 @@
+MODULE OperationOrderDashboard;
+
+REQUIRE OperationOrder;
+
+NAMESPACE Manufacturing;
+
+imei1 'IMEI1' = DATA LOCAL STRING[100] ();
+imei2 'IMEI2' = DATA LOCAL STRING[100] ();
+seriesNumber 'S\\N' = DATA LOCAL STRING[100] ();
+
+FORM operationOrderDashboard 'Первичная инспекция'
+    OBJECTS v = Partner PANEL NULL
+    PROPERTIES(v) 'Vendor' = name SELECTOR
+    FILTERS isVendor(v)
+    
+    OBJECTS p = Product PANEL NULL
+    PROPERTIES(p) 'Product' = name SELECTOR, idDefaultModel SELECTOR
+    
+    PROPERTIES() seriesNumber 
+
+    OBJECTS o = OperationOrder
+    PROPERTIES(o) READONLY date, time, nameProduct, idDefaultModel, 'IMEI1' = idLot, imei2, seriesNumber, nameVendor
+    PROPERTIES deleteLine 'Удалить' = {
+        ASK 'Вы действительно хотите удалить текущую строку вместе с партией ?' DO 
+            NEWSESSION APPLY {
+                DELETE Lot l WHERE l = lot(o);
+                DELETE o;
+            }
+    } GRID
+    FILTERS employee(o) = currentUser()
+
+    FILTERGROUP dates
+        FILTER 'Сегодня' date(o) = currentDate() DEFAULT
+;
+EXTEND FORM operationOrderDashboard
+    PROPERTIES imei2() ON CHANGE {
+        INPUT s = imei2() CHANGE DO ACTIVATE PROPERTY operationOrderDashboard.seriesNumber();
+    }
+;
+EXTEND FORM operationOrderDashboard
+    PROPERTIES() imei1 ON CHANGE {
+        INPUT s = imei1() CHANGE DO ACTIVATE PROPERTY operationOrderDashboard.imei2();
+    }
+;
+
+createOperationOrder 'Готово' (Partner v, Product p) {
+    IF NOT lot(imei1()) THEN { 
+        NEW l = Lot {
+            id(l) <- imei1();
+            imei2(l) <- imei2();
+            seriesNumber(l) <- seriesNumber();
+            product(l) <- p;
+            dataVendor(l) <- v;
+            NEW o = OperationOrder {
+                lot(o) <- l;
+                APPLY;
+                IF NOT canceled() THEN {
+                    SEEK operationOrderDashboard.o = o;
+                    ACTIVATE PROPERTY operationOrderDashboard.imei1();
+                } 
+            }
+        }
+    } ELSE 
+        MESSAGE 'Партия с таким IMEI1 уже существует';
+}
+
+EXTEND FORM operationOrderDashboard
+    PROPERTIES createOperationOrder(v, p) SHOWIF imei1() AND seriesNumber()
+;
+
+DESIGN operationOrderDashboard {
+    OBJECTS {
+        NEW pane {
+            fill = 1;
+            horizontal = TRUE;
+            NEW leftPane {
+                MOVE PROPERTY(name(v)) { alignment = STRETCH; }
+                MOVE PROPERTY(name(p)) { alignment = STRETCH; }
+                MOVE PROPERTY(idDefaultModel(p)) { alignment = STRETCH; }
+                MOVE PROPERTY(imei1()) { alignment = STRETCH; }
+                MOVE PROPERTY(imei2()) { alignment = STRETCH; }
+                MOVE PROPERTY(seriesNumber()) { alignment = STRETCH; }
+                MOVE PROPERTY(createOperationOrder(v, p)) { alignment = STRETCH; }
+            }
+            MOVE BOX(o);
+        }
+    }
+
+}
+;
+
+NAVIGATOR {
+    operations {
+        NEW operationOrderDashboard;
+    }
+}

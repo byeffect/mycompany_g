@@ -5,15 +5,22 @@ REQUIRE Product;
 NAMESPACE MasterData;
 
 CLASS Model 'Модель';
-id '{ID}' = DATA STRING[100] (Model) NONULL DELETE INDEXED;
+id '{ID}' = DATA STRING[100] (Model) NONULL DELETE INDEXED CHARWIDTH 15;
 model = GROUP AGGR Model m BY id(m);
 
-product = DATA Product (Model);
+product = DATA Product (Model) INDEXED;
 nameProduct 'Товар' (Model m) = name(product(m));
 productModel(STRING id) = product(model(id));
 countModels = GROUP SUM 1 BY product(Model m);
 defaultModel (Item i) = GROUP MIN Model m BY product(m);
 idDefaultModel 'SKU' (Item i) = id(defaultModel(i));
+
+FORM model 'Модель'
+    OBJECTS m = Model
+    PROPERTIES(m) id, nameProduct
+    
+    EDIT Model OBJECT m
+;
 
 EXTEND FORM items
     PROPERTIES (i) READONLY idDefaultModel

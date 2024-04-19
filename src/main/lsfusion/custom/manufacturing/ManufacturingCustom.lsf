@@ -1,6 +1,6 @@
 MODULE ManufacturingCustom;
 
-REQUIRE OperationOrder,
+REQUIRE OperationOrder, OperationOrderDashboard,
         OperationReceipt, OperationReceiptMobile,
         OperationTransfer, OperationTransferMobile,
         OperationProduction, OperationProductionMobile,
