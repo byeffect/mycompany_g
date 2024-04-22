@@ -1,6 +1,6 @@
 MODULE OperationOrderDashboard;
 
-REQUIRE OperationOrder;
+REQUIRE OperationOrder, LotPrint;
 
 NAMESPACE Manufacturing;
 
@@ -27,6 +27,7 @@ FORM operationOrderDashboard 'Первичная инспекция'
                 DELETE o;
             }
     } GRID
+    PROPERTIES printLine 'Перепечатать' = { print(lot(o)); } GRID
     FILTERS employee(o) = currentUser()
 
     FILTERGROUP dates
@@ -57,6 +58,7 @@ createOperationOrder 'Готово' (Partner v, Product p) {
                 IF NOT canceled() THEN {
                     SEEK operationOrderDashboard.o = o;
                     ACTIVATE PROPERTY operationOrderDashboard.imei1();
+                    print(l);
                 } 
             }
         }
@@ -65,7 +67,7 @@ createOperationOrder 'Готово' (Partner v, Product p) {
 }
 
 EXTEND FORM operationOrderDashboard
-    PROPERTIES createOperationOrder(v, p) SHOWIF imei1() AND seriesNumber()
+    PROPERTIES createOperationOrder(v, p) WAIT SHOWIF imei1() AND seriesNumber()
 ;
 
 DESIGN operationOrderDashboard {
