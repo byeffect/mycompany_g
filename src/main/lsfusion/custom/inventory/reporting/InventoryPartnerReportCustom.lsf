@@ -1,0 +1,30 @@
+MODULE InventoryPartnerReportCustom;
+
+REQUIRE LotCustom, ProductModel;
+
+NAMESPACE Inventory;
+
+onHandA 'On hand' (Product p, Partner partner, DATE d) =
+    GROUP SUM onHand(Location l, Lot lot, DATETIME(sum(d, 1))) IF l IS Location AND product(lot) = p AND vendor(lot) = partner AND NOT countChildren (l) AND isChild(l, location('MX000001'));
+
+isOnHand (Product p, DATE d) = GROUP MIN onHandA (p, Partner partner, d) IF partner IS Partner;
+isOnHand (Partner partner, DATE d) = GROUP MIN onHandA (Product p, partner, d) IF p IS Product;
+
+FORM inventoryPartnerReport 'Остатки на дату в разрезе поставщиков'
+    OBJECTS d = DATE PANEL
+    PROPERTIES VALUE(d)
+
+    OBJECTS p = Product
+    PROPERTIES (p) idDefaultModel
+    FILTERS isOnHand(p, d)
+
+    OBJECTS le = LegalEntity
+    PROPERTIES READONLY onHandA(p, le, d) COLUMNS (le) HEADER name(le)
+    FILTERS isOnHand(le, d)
+;
+
+NAVIGATOR {
+    reporting {
+        NEW inventoryPartnerReport;
+    }
+}
