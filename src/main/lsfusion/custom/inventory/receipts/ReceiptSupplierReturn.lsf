@@ -1,0 +1,137 @@
+MODULE ReceiptSupplierReturn;
+
+REQUIRE ReceiptLineMobile, DefectMobile;
+
+NAMESPACE Inventory;
+
+returnLocaltion = DATA Location (LegalEntity);
+nameReturnLocaltion 'Место хранения возвратов' (LegalEntity c) = name(returnLocaltion(c));
+
+repairLocaltion = DATA Location (LegalEntity);
+nameRepairLocaltion 'Место хранения ремонт' (LegalEntity c) = name(repairLocaltion(c));
+
+EXTEND FORM partner PROPERTIES(p) SHOWIF isVendor(p) nameReturnLocaltion, nameRepairLocaltion;
+
+DESIGN partner {
+    headerColumn1 {
+        MOVE PROPERTY(nameReturnLocaltion(p));
+    }
+    headerColumn2 {
+        MOVE PROPERTY(nameRepairLocaltion(p));
+    }
+}
+
+receiptLine 'Принимать построчно' = DATA BOOLEAN (ShipmentType);
+EXTEND FORM shipmentType PROPERTIES(o) receiptLine;
+
+returnRepairShipmentType = DATA ShipmentType();
+nameReturnRepairShipmentType 'Тип перемешения для возврата на ремонт' () = name(returnRepairShipmentType());
+
+returnSupplierReceiptType = DATA ReceiptType();
+nameReturnSupplierReceiptTypee 'Тип поступления для возврата поставщику' () = name(returnSupplierReceiptType());
+
+EXTEND FORM options
+    PROPERTIES nameReturnRepairShipmentType(), nameReturnSupplierReceiptTypee()
+;
+DESIGN options {
+    commons {
+        MOVE PROPERTY(nameReturnRepairShipmentType());
+        MOVE PROPERTY(nameReturnSupplierReceiptTypee());
+    }
+}
+
+onStarted()+{
+    IF NOT shipmentType('returnRepair') THEN NEW s = ShipmentType{
+        id(s) <- 'returnRepair';
+        name(s) <- 'Возврат на ремонт';
+        receiptLine(s) <- TRUE;
+        //numerator(s) <- NULL;
+    }
+    returnRepairShipmentType() <- shipmentType('returnRepair') WHERE NOT returnDefectShipmentType();
+    IF NOT receiptType('returnSupplier') THEN NEW s = ReceiptType{
+        id(s) <- 'returnSupplier';
+        name(s) <- 'Возврат поставщику';
+        receiptLine(s) <- TRUE;
+        //numerator(s) <- NULL;
+    }
+    returnSupplierReceiptType() <- receiptType('returnSupplier') WHERE NOT returnSupplierReceiptType();
+}
+
+FORM receiptReturnSupplier 'Возврат поставщику'
+    OBJECTS rl = ReceiptLine
+    PROPERTIES(rl) READONLY htmlReceiptLine
+    PROPERTIES(rl) NEWSESSION deleteLine = DELETE
+
+    FILTERS type(rl) = receiptType('returnSupplier'),
+            receiptLine(receipt(rl))
+
+
+    FILTERGROUP dates
+        FILTER 'Сегодня' executionDate(rl) = currentDate() DEFAULT
+;
+
+scanBarcodeReturnSupplier () {
+    INPUT b = STRING DO {
+        IF NOT lot(b) THEN {
+            beep(warningSound(), TRUE);
+            MESSAGE 'Не найдено указанного IMEI';
+            RETURN;
+        }
+        IF NOT returnLocaltion(vendor(lot(b))) THEN {
+            beep(warningSound(), TRUE);
+            MESSAGE 'Не задано место хранения возвратов у поставщика';
+            RETURN;
+        }
+        IF GROUP SUM 1 IF done(ReceiptLine l, lot(b)) AND executionDate(l) = currentDate() THEN {
+            beep(warningSound(), TRUE);
+            MESSAGE 'Код партии уже был принят';
+            RETURN;
+        }
+
+        NEWSESSION {
+            IF NOT receipt(returnLocaltion(vendor(lot(b))), receiptType('returnSupplier'), currentDate()) THEN NEW r = Receipt {
+                executionDateTime(r) <- currentDateTime();
+                type(r) <- receiptType('returnSupplier');
+                location(r) <- returnLocaltion(vendor(lot(b)));
+                done(r) <- TRUE;
+                receiptLine(r) <- TRUE;
+            }
+            NEW l = ReceiptLine {
+                receipt(l) <- receipt(returnLocaltion(vendor(lot(b))), receiptType('returnSupplier'), currentDate());
+                product(l) <- product(lot(b));
+                done(l) <- 1;
+                done(l, lot(b)) <- 1;
+
+                SEEK receiptReturnSupplier.rl = l;
+            }
+            APPLY;
+            IF NOT canceled() THEN beep(successSound(), TRUE);
+        }
+    }
+}
+
+EXTEND FORM receiptReturnSupplier
+    PROPERTIES() barcode ON CHANGE scanBarcodeReturnSupplier()
+;
+
+DESIGN receiptReturnSupplier {
+    OBJECTS {
+        class = '';
+        MOVE PROPERTY(barcode()) {
+            caption = '';
+            placeholder = 'Введите штрих-код';
+            alignment = STRETCH;
+        }
+        MOVE FILTERGROUP(dates);
+        MOVE GRID(rl);
+        REMOVE BOX(rl);
+
+        MOVE PROPERTY(deleteLine) { alignment = STRETCH; }
+    }
+}
+
+NAVIGATOR {
+    dashboards {
+        NEW receiptReturnSupplier;
+    }
+}
