@@ -1,6 +1,6 @@
 MODULE ReceiptLineMobile;
 
-REQUIRE ReceiptDone, ReceiptMobile, ReceiptLot, ReceiptLineScan, LotCustom;
+REQUIRE ReceiptDone, ReceiptMobile, ReceiptLot, ReceiptLineScan, LotCustom, ReceiptPutAwayLot;
 
 NAMESPACE Inventory;
 
@@ -110,6 +110,8 @@ scanBarcode(Location lc, ReceiptType rt, ReceiptLine rl) {
                         NEW pa = ReceiptPutAway {
                             receiptLine(pa) <- l;
                             location(pa) <- location(lc, product(l));
+                            quantity(pa) <- 1;
+                            quantity(pa, lot(b)) <- 1;
                         }
 
                         SEEK receiptLine.rl = l;
