@@ -1,6 +1,6 @@
 MODULE ReceiptCustom;
 
-REQUIRE ReceiptLot, ReceiptSearch, ProductModel;
+REQUIRE ReceiptLot, LotCustom, ReceiptPutAwayLot, ReceiptSearch, ProductModel;
 
 NAMESPACE Inventory;
 
@@ -34,3 +34,12 @@ EXTEND FORM receiptType
 ;
 
 WHEN (SETCHANGED(type(Receipt r)) OR CHANGED(vendor(r))) AND defaultVendor(type(r)) AND NOT vendor(r) DO vendor(r) <- defaultVendor(type(r));
+
+CONSTRAINT SET(done(ReceiptLine l) (-) doneLot(l)) AND checkLot(product(l))
+    MESSAGE 'Количество принятых партий в приходе не соответствует принятому количеству';
+
+CONSTRAINT SET(done(ReceiptLine l) (-) put(l)) AND checkLocation(product(l))
+    MESSAGE 'Количество размещенных товаров не соответствует принятому количеству';
+
+CONSTRAINT SET(done(ReceiptLine l) (-) putLot(l)) AND checkLotLocation(product(l))
+    MESSAGE 'Количество размещенных партий не соответствует принятому количеству'; 

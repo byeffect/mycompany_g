@@ -79,3 +79,26 @@ DESIGN lot {
     }
 }
 EXTEND FORM lots PROPERTIES(l) READONLY order, assignment, imei2, seriesNumber;
+
+checkLot 'Проверка по партиям' = DATA BOOLEAN (Category);
+checkLocation 'Проверка по ячейкам' = DATA BOOLEAN (Category);
+checkLotLocation 'Проверка по партиям/ячейкам' = DATA BOOLEAN (Category);
+
+EXTEND FORM category
+    PROPERTIES(c) checkLot, checkLocation, checkLotLocation
+;
+
+DESIGN category {
+    tabs {
+        NEW constraints {
+            caption = 'Ограничения';
+            MOVE PROPERTY(checkLot(c));
+            MOVE PROPERTY(checkLocation(c));
+            MOVE PROPERTY(checkLotLocation(c));
+        }
+    }
+}
+
+checkLot (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLot(c) MATERIALIZED;
+checkLocation (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLocation(c) MATERIALIZED;
+checkLotLocation (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLotLocation(c) MATERIALIZED;

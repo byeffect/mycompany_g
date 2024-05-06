@@ -1,0 +1,14 @@
+MODULE ShipmentCustom;
+
+REQUIRE ShipmentPickingLot, LotCustom;
+
+NAMESPACE Inventory;
+
+CONSTRAINT SET(done(ShipmentLine l) (-) doneLot(l)) AND checkLot(product(l))
+    MESSAGE 'Количество принятых партий в приходе не соответствует принятому количеству';
+
+CONSTRAINT SET(done(ShipmentLine l) (-) picked(l)) AND checkLocation(product(l))
+    MESSAGE 'Количество размещенных товаров не соответствует принятому количеству';
+
+CONSTRAINT SET(done(ShipmentLine l) (-) pickedLot(l)) AND checkLotLocation(product(l))
+    MESSAGE 'Количество размещенных партий не соответствует принятому количеству'; 
