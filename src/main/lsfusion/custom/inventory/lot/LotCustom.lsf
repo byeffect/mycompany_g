@@ -1,6 +1,6 @@
 MODULE LotCustom;
 
-REQUIRE Lot, PartnerPurchase, ReceiptLot, ProductModel;
+REQUIRE Lot, PartnerPurchase, ReceiptLot, ProductModel, InvLedgerLot;
 
 NAMESPACE Inventory;
 
@@ -84,8 +84,11 @@ checkLot 'Проверка по партиям' = DATA BOOLEAN (Category);
 checkLocation 'Проверка по ячейкам' = DATA BOOLEAN (Category);
 checkLotLocation 'Проверка по партиям/ячейкам' = DATA BOOLEAN (Category);
 
+checkLotQuantity1 'Проверка на количество по партии больше 1' = DATA BOOLEAN (Category);
+checkLotOnHand 'Проверка на остаток по партии' = DATA BOOLEAN (Category);
+
 EXTEND FORM category
-    PROPERTIES(c) checkLot, checkLocation, checkLotLocation
+    PROPERTIES(c) checkLot, checkLocation, checkLotLocation, checkLotQuantity1, checkLotOnHand
 ;
 
 DESIGN category {
@@ -95,6 +98,8 @@ DESIGN category {
             MOVE PROPERTY(checkLot(c));
             MOVE PROPERTY(checkLocation(c));
             MOVE PROPERTY(checkLotLocation(c));
+            MOVE PROPERTY(checkLotQuantity1(c));
+            MOVE PROPERTY(checkLotOnHand(c));
         }
     }
 }
@@ -102,3 +107,11 @@ DESIGN category {
 checkLot (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLot(c) MATERIALIZED;
 checkLocation (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLocation(c) MATERIALIZED;
 checkLotLocation (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLotLocation(c) MATERIALIZED;
+
+checkLotQuantity (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLotQuantity1(c) MATERIALIZED;
+CONSTRAINT SET(onHand(Lot l) > 1) AND checkLotQuantity(product(l))
+    MESSAGE 'Запрещено иметь остаток по партии больше 1';
+
+checkLotOnHand (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLotOnHand(c) MATERIALIZED;
+CONSTRAINT SET(onHand(Location l, Product p) (-) onHandLot(l, p)) AND checkLotOnHand(p)
+    MESSAGE 'Остаток по товару не совпадает с остатком по партии'; 
