@@ -35,3 +35,17 @@ quantityScan 'Сканировано' (Adjustment r, Product p) = GROUP SUM quan
 quantityScan 'Сканировано' (AdjustmentLine l) = quantityScan(adjustment(l), product(l));
 
 quantityScan 'Сканировано' (Adjustment r, Lot lt) = GROUP SUM quantity(AdjustmentScan s) IF adjustment(s) = r AND lot(s) = lt;
+
+EXTEND FORM adjustment
+    OBJECTS asc = AdjustmentScan
+    PROPERTIES(asc) READONLY nameUser, dateTime, idLot, nameProduct, quantity
+    FILTERS adjustment(asc) = a
+;
+
+DESIGN adjustment {
+    details {
+        MOVE BOX(asc) {
+            caption = badged('Сканирования', INTEGER(quantityScan(a)));
+        }
+    }
+}
