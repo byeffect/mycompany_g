@@ -1,0 +1,133 @@
+MODULE AdjustmentTaskTask;
+
+REQUIRE Adjustment, AdjustmentCanceled, LocationProduct;
+
+NAMESPACE Inventory;
+
+CLASS AdjustmentTask 'Задание на инвентаризацию';
+
+@defineNumber(adjustmentTask, 'Задание на инвентаризацию', 'IT');
+
+dateTime 'Date' = DATA DATETIME (AdjustmentTask) IN id;
+WHEN LOCAL SET (AdjustmentTask b IS AdjustmentTask) DO dateTime(b) <- currentDateTime();
+
+author 'Author' = DATA Employee (AdjustmentTask);
+WHEN SET(AdjustmentTask t IS AdjustmentTask) AND NOT author(t) AND currentUser() IS Employee DO author(t) <- currentUser();
+
+note 'Note' = DATA ISTRING[50] (AdjustmentTask);
+
+CLASS AdjustmentTaskType 'Тип инвентаризации' {
+    selective 'Выборочная',
+    all 'Все'
+}
+
+name 'Задание на инвентаризацию' (AdjustmentTaskType t) = staticCaption(t);
+
+type = DATA AdjustmentTaskType (AdjustmentTask) NONULL;
+nameType 'Тип задания на инвентаризацию' (AdjustmentTask t) = name(type(t));
+WHEN LOCAL SET(AdjustmentTask t IS AdjustmentTask) AND NOT CHANGED(type(t)) DO type(t) <- AdjustmentTaskType.selective;
+
+task = DATA AdjustmentTask (Adjustment);
+
+dataIn 'Вкл' = DATA BOOLEAN (AdjustmentTask, Location);
+in 'Вкл.' (AdjustmentTask t, Location l) = (dataIn(t, l) OR type(t) == AdjustmentTaskType.all AND l IS Location);
+
+doneDate 'Выполнен' = DATA DATETIME (Adjustment);
+WHEN SETCHANGED(status(Adjustment a)) AND status(a) == AdjustmentStatus.done DO doneDate(a) <- currentDateTime();
+
+countAdjustment (AdjustmentTask t, AdjustmentStatus s) = GROUP SUM 1 BY task(Adjustment a), status(a);
+countCanceledAdjustment 'Отменен' (AdjustmentTask t) = countAdjustment(t, AdjustmentStatus.canceled);
+countInProgressAdjustment 'В процессе' (AdjustmentTask t) = countAdjustment(t, AdjustmentStatus.inProgress);
+countDoneAdjustment 'Выполнен' (AdjustmentTask t) = countAdjustment(t, AdjustmentStatus.done);
+
+nameProducts 'Products' (Adjustment a) = GROUP CONCAT name(Product p) IF location(Location lp, p) = location(a), ',' ORDER p, lp;
+
+adjustment (AdjustmentTask t, Location l) = GROUP MIN Adjustment a BY task(a), location(a);
+adjustmentCreate 'Создать инвентаризации' (AdjustmentTask t) {
+    FOR in(t, Location l) AND isChild(l, location('MX000001')) AND NOT location('MX000001') == l AND NOT adjustment(t, l) AND t IS AdjustmentTask AND l IS Location DO {
+        NEW a = Adjustment {
+            task(a) <- t;
+            type(a) <- AdjustmentType.all;
+            location(a) <- l;
+        }
+    }
+}
+
+FORM adjustmentTask 'Задание на инвентаризацию'
+    OBJECTS t = AdjustmentTask PANEL
+    PROPERTIES (t) number, dateTime, author, note, nameType,
+        countCanceledAdjustment, countInProgressAdjustment, countDoneAdjustment
+
+    OBJECTS l = Location
+    PROPERTIES(t, l) in
+    PROPERTIES(l) READONLY name, id, internalUse, canonicalNameParent, nameCompany, address, city, state, zip
+    FILTERS isChild(l, location('MX000001')) AND NOT location('MX000001') == l
+    PROPERTIES adjustmentCreate 'Создать инвентаризации' = adjustmentCreate(t) DRAW l TOOLBAR
+
+    OBJECTS a = Adjustment
+    PROPERTIES(a) READONLY dateTime, number, nameStatus, nameLocation, doneDate, nameProducts, theoreticalQuantity, realQuantity
+    FILTERS task(a) == t
+    PROPERTIES(t) adjustmentCreate DRAW a TOOLBAR
+    
+    EDIT AdjustmentTask OBJECT t
+;
+
+DESIGN adjustmentTask {
+    OBJECTS {
+        NEW header {
+            alignment = STRETCH;
+            horizontal = TRUE;
+            NEW headerLeft {
+                MOVE PROPERTY (number(t));
+                MOVE PROPERTY (dateTime(t));
+                MOVE PROPERTY (author(t));
+                MOVE PROPERTY (note(t));
+            }
+            NEW headerRight {
+                MOVE PROPERTY (countCanceledAdjustment(t));
+                MOVE PROPERTY (countInProgressAdjustment(t));
+                MOVE PROPERTY (countDoneAdjustment(t));
+            }
+        }
+        NEW optionsPane {
+            horizontal = TRUE;
+            MOVE PROPERTY (nameType(t));
+        }
+
+        NEW tabbedPane {
+            tabbed = TRUE;
+            fill = 1;
+            
+            NEW locations {
+                caption = 'Места хранения';
+                fill = 1;
+                MOVE BOX(l);
+                showIf = type(t) == AdjustmentTaskType.selective;
+            }
+            NEW adjustments {
+                caption = 'Инвентаризации';
+                fill = 1;
+                horizontal = TRUE;
+                MOVE BOX(a);
+            }
+        }
+    }
+}
+
+FORM adjustmentTasks 'Задания на инвентаризацию'
+    OBJECTS t = AdjustmentTask 
+    PROPERTIES (t) READONLY number, dateTime, author, note, nameType
+    PROPERTIES (t) NEWSESSION NEW, EDIT, DELETE
+    
+    OBJECTS a = Adjustment
+    PROPERTIES(a) READONLY dateTime, number, nameStatus, nameLocation, doneDate, nameProducts, theoreticalQuantity, realQuantity
+    FILTERS task(a) == t
+
+    LIST AdjustmentTask OBJECT t
+;
+
+NAVIGATOR {
+    operations {
+        NEW adjustmentTasks;
+    }
+}
