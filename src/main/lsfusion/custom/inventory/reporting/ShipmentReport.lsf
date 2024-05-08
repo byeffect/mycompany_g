@@ -84,10 +84,10 @@ EXTEND FORM shipmentReport
 
     FILTERGROUP date1
         FILTER 'по дате планируемой' (NOT scheduledDate(s1) < from(dates) AND NOT scheduledDate(s1) > to(dates)) DEFAULT
-        FILTER 'по дате приемки' (NOT executionDate(s1) < from(dates) AND NOT executionDate(s1) > to(dates))
+        FILTER 'по дате выполнения' (NOT executionDate(s1) < from(dates) AND NOT executionDate(s1) > to(dates))
     FILTERGROUP date2
         FILTER 'по дате планируемой' (NOT scheduledDate(s2) < from(dates) AND NOT scheduledDate(s2) > to(dates)) DEFAULT
-        FILTER 'по дате приемки' (NOT executionDate(s2) < from(dates) AND NOT executionDate(s2) > to(dates))
+        FILTER 'по дате выполнения' (NOT executionDate(s2) < from(dates) AND NOT executionDate(s2) > to(dates))
 ;
 
 DESIGN shipmentReport {

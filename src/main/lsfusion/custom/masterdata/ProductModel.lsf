@@ -26,6 +26,9 @@ EXTEND FORM items
     PROPERTIES (i) READONLY idDefaultModel
 ;
 
+EXTEND FORM products
+    PROPERTIES (p) READONLY idDefaultModel
+;
 
 EXTEND FORM item
     OBJECTS model = Model

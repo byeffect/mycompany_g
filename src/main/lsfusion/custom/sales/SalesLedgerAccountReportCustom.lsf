@@ -1,0 +1,12 @@
+MODULE SalesLedgerAccountReportCustom;
+
+REQUIRE SalesLedgerAccountReport, ProductModel;
+
+NAMESPACE Sales;
+
+sku 'SKU' (SalesLedger l) = idDefaultModel(item(l));
+
+EXTEND FORM salesLedgerReport
+    PROPERTIES sku(sl)
+    PROPERTIES sku(l)
+;

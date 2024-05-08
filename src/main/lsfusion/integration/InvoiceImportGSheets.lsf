@@ -1,6 +1,6 @@
 MODULE InvoiceImportGSheets;
 
-REQUIRE ShipmentImportGSheets, Invoice, SalesLedgerAccountInvoice;
+REQUIRE ShipmentImportGSheets, InvoiceShipment, SalesLedgerAccountInvoice;
 
 NAMESPACE Invoicing;
 
@@ -76,9 +76,11 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (Country
             dateTime(i) <- dateTimeToDateTime(date, TIME('23:59:59'));
             type(i) <- amazonInvoiceType();
             customer(i) <- FBAPartner();
+            location(i) <- location('MX000004');
+            ready(i) <- TRUE;
             //status(i) <- InvoiceStatus.draft;
         }
-        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == amazonInvoiceType() AND customer(ii) == FBAPartner() AND status(ii) == InvoiceStatus.draft ORDER dateTime(ii), ii) DO {
+        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == amazonInvoiceType() AND customer(ii) == FBAPartner()  ORDER dateTime(ii), ii) DO {
             LOCAL part = INTEGER(InvoiceLine);
             part(InvoiceLine l) <- PARTITION SUM 1 IF invoice(l) == i ORDER index(l), l BY invoice(l), customerReference(l), item(l);
 
@@ -119,25 +121,25 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (Country
 
                 dataAmount(il, CustomSalesAccount aa) <- NULL;
                 IF postageCredits(x) > 0 OR postageCredits(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- postageCredits(x) WHERE id(aa) == 'postage_credits';
+                    dataAmount(il, CustomSalesAccount aa) <- -postageCredits(x) WHERE id(aa) == 'postage_credits';
                 }
                 IF giftWrapCredits(x) > 0 OR giftWrapCredits(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- giftWrapCredits(x) WHERE id(aa) == 'gift_wrap_credits';
+                    dataAmount(il, CustomSalesAccount aa) <- -giftWrapCredits(x) WHERE id(aa) == 'gift_wrap_credits';
                 }
                 IF promotionalRebates(x) > 0 OR promotionalRebates(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- promotionalRebates(x) WHERE id(aa) == 'promotional_rebates';
+                    dataAmount(il, CustomSalesAccount aa) <- -promotionalRebates(x) WHERE id(aa) == 'promotional_rebates';
                 }
                 IF sellingFees(x) > 0 OR sellingFees(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- sellingFees(x) WHERE id(aa) == 'selling_fees';
+                    dataAmount(il, CustomSalesAccount aa) <- -sellingFees(x) WHERE id(aa) == 'selling_fees';
                 }
                 IF fbaFees(x) > 0 OR fbaFees(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- fbaFees(x) WHERE id(aa) == 'fba_fees';
+                    dataAmount(il, CustomSalesAccount aa) <- -fbaFees(x) WHERE id(aa) == 'fba_fees';
                 }
                 IF otherTransactionFees(x) > 0 OR otherTransactionFees(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- otherTransactionFees(x) WHERE id(aa) == 'other_transaction_fees';
+                    dataAmount(il, CustomSalesAccount aa) <- -otherTransactionFees(x) WHERE id(aa) == 'other_transaction_fees';
                 }
                 IF other(x) > 0 OR other(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- other(x) WHERE id(aa) == 'other';
+                    dataAmount(il, CustomSalesAccount aa) <- -other(x) WHERE id(aa) == 'other';
                 }
             }
 
@@ -194,25 +196,25 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (Country
 
                     dataAmount(il, CustomSalesAccount aa) <- NULL;
                     IF postageCredits(x) > 0 OR postageCredits(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- postageCredits(x) WHERE id(aa) == 'postage_credits';
+                        dataAmount(il, CustomSalesAccount aa) <- -postageCredits(x) WHERE id(aa) == 'postage_credits';
                     }
                     IF giftWrapCredits(x) > 0 OR giftWrapCredits(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- giftWrapCredits(x) WHERE id(aa) == 'gift_wrap_credits';
+                        dataAmount(il, CustomSalesAccount aa) <- -giftWrapCredits(x) WHERE id(aa) == 'gift_wrap_credits';
                     }
                     IF promotionalRebates(x) > 0 OR promotionalRebates(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- promotionalRebates(x) WHERE id(aa) == 'promotional_rebates';
+                        dataAmount(il, CustomSalesAccount aa) <- -promotionalRebates(x) WHERE id(aa) == 'promotional_rebates';
                     }
                     IF sellingFees(x) > 0 OR sellingFees(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- sellingFees(x) WHERE id(aa) == 'selling_fees';
+                        dataAmount(il, CustomSalesAccount aa) <- -sellingFees(x) WHERE id(aa) == 'selling_fees';
                     }
                     IF fbaFees(x) > 0 OR fbaFees(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- fbaFees(x) WHERE id(aa) == 'fba_fees';
+                        dataAmount(il, CustomSalesAccount aa) <- -fbaFees(x) WHERE id(aa) == 'fba_fees';
                     }
                     IF otherTransactionFees(x) > 0 OR otherTransactionFees(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- otherTransactionFees(x) WHERE id(aa) == 'other_transaction_fees';
+                        dataAmount(il, CustomSalesAccount aa) <- -otherTransactionFees(x) WHERE id(aa) == 'other_transaction_fees';
                     }
                     IF other(x) > 0 OR other(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- other(x) WHERE id(aa) == 'other';
+                        dataAmount(il, CustomSalesAccount aa) <- -other(x) WHERE id(aa) == 'other';
                     }
                 }
             }
@@ -364,7 +366,7 @@ importInvoiceEbay 'Импорт реализации с eBay' (Country c, DATE d
             customer(i) <- FBAPartner();
             //status(i) <- InvoiceStatus.draft;
         }
-        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == ebayInvoiceType() AND customer(ii) == FBAPartner() AND status(ii) == InvoiceStatus.draft ORDER dateTime(ii), ii) DO {
+        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == ebayInvoiceType() AND customer(ii) == FBAPartner() ORDER dateTime(ii), ii) DO {
             LOCAL part = INTEGER(InvoiceLine);
             part(InvoiceLine l) <- PARTITION SUM 1 IF invoice(l) == i ORDER index(l), l BY invoice(l), customerReference(l), item(l);
 

@@ -1,6 +1,6 @@
 MODULE ReceiptMobile;
 
-REQUIRE ReceiptDone, ReceiptPackage, ReceiptLot, PackageLot, ReceiptScan, InventoryCustom, LotCustom, Mobile, Icon, Sound;
+REQUIRE ReceiptDone, ReceiptPackage, ReceiptPlan, ReceiptLot, PackageLot, ReceiptScan, InventoryCustom, LotCustom, Mobile, Icon, Sound;
 
 NAMESPACE Inventory;
 
@@ -65,7 +65,7 @@ unmarkAsDefect 'Не брак' (ReceiptScan s) {
 
 readonlyReceipt = DATA LOCAL BOOLEAN ();
 
-htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + vendorReference(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameVendor(r) + '</font>');
+htmlReceipt '' (Receipt r) = HTML (CONCAT '&nbsp;', '<b>' + vendorReference(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(receiveDate(r), 'DD/MM'), '<font size="-1">' + nameVendor(r) + '</font>');
 
 htmlReceipt '' (ReceiptLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '<font size="-2">' + INTEGER(initialDemand(l)) + '</font>') + '</div>');
 
@@ -225,52 +225,60 @@ scanBarcode(Receipt r, Package p, ReceiptScan rs) {
                     beep(warningSound(), TRUE);
                     MESSAGE 'Не выбрана упаковка. Сначала просканируйте ее.';
                 } ELSE {
-                    IF NOT lot(b) THEN {
-                        IF NOT location(b) OR NOT rs THEN {
-                            beep(warningSound(), TRUE);
-                            IF createLots(type(r)) THEN {
-                                IF (GROUP SUM 1 IF receipt(ReceiptLine l) == r) == 1 THEN {
-                                    FOR ReceiptLine l == GROUP MAX ReceiptLine rl IF receipt(rl) == r DO {
-                                        ASK 'Создать партию для ' + nameProduct(l) + '?' DO {
-                                            NEW lot = Lot {
-                                                id(lot) <- b;
-                                                product(lot) <- product(l);
-                                                APPLY;
+                    IF length(b) = 15 THEN{
+                        IF NOT lot(b) THEN {
+                            IF NOT location(b) OR NOT rs THEN {
+                                beep(warningSound(), TRUE);
+                                IF createLots(type(r)) THEN {
+                                    IF (GROUP SUM 1 IF receipt(ReceiptLine l) == r) == 1 THEN {
+                                        FOR ReceiptLine l == GROUP MAX ReceiptLine rl IF receipt(rl) == r DO {
+                                            ASK 'Создать партию для ' + nameProduct(l) + '?' DO {
+                                                NEW lot = Lot {
+                                                    id(lot) <- b;
+                                                    product(lot) <- product(l);
+                                                    APPLY;
+                                                }
                                             }
                                         }
-                                    }
-                                } ELSE 
-                                DIALOG selectReceiptLine OBJECTS r = r, l INPUT DO
-                                    IF l THEN NEWSESSION {
-                                        NEW lot = Lot {
-                                            id(lot) <- b;
-                                            product(lot) <- product(l);
-                                            APPLY;
-                                        }
-                                    }
-                            } ELSE
-                                MESSAGE 'Не найден код партии';
-                            
-                        } ELSE {
-                            NEWSESSION APPLY { location(rs) <- location(b); }
-                            IF NOT canceled() THEN beep(infoSound(), TRUE);
-                        }
-                    }
-                    IF lot(b) THEN {
-                        IF scan(r, lot(b)) THEN {
-                            beep(warningSound(), TRUE);
-                            MESSAGE 'Код партии уже был принят';
-                        } ELSE {
-                            IF countPackages(r) AND NOT GROUP SUM 1 IF package(PackageLine pl) = p AND lot(pl) = lot(b) THEN {
-                                beep(warningSound(), TRUE);
-                                MESSAGE 'Этой партии не должно быть в текущей упаковке';
+                                    } ELSE
+                                        DIALOG selectReceiptLine OBJECTS r = r, l INPUT DO
+                                            IF l THEN NEWSESSION {
+                                                NEW lot = Lot {
+                                                    id(lot) <- b;
+                                                    product(lot) <- product(l);
+                                                    APPLY;
+                                                }
+                                            }
+                                } ELSE
+                                    MESSAGE 'Не найден код партии';
+
                             } ELSE {
-//                                IF NOT countPackages(r) AND NOT GROUP SUM 1 IF (initialDemand(ReceiptLine l, lot(b)) OR 
-//                                                                                (createLots(type(r)) AND product(l) = product(lot(b)))) 
-//                                                                            AND receipt(l) = r THEN {
-//                                    beep(warningSound(), TRUE);
-//                                    MESSAGE 'Этой партии не должно быть в текущей приемке';
-//                                } ELSE
+                                NEWSESSION APPLY { location(rs) <- location(b); }
+                                IF NOT canceled() THEN beep(infoSound(), TRUE);
+                            }
+                        }
+                        IF id(product(lot(b))) = 'initial' THEN {
+                            DIALOG selectReceiptLine OBJECTS r = r, l INPUT DO
+                                IF l THEN NEWSESSION {
+                                    product(lot(b)) <- product(l);
+                                    APPLY;
+                                }
+                        }
+                        IF lot(b) AND NOT id(product(lot(b))) = 'initial' THEN {
+                            IF scan(r, lot(b)) THEN {
+                                beep(warningSound(), TRUE);
+                                MESSAGE 'Код партии уже был принят';
+                            } ELSE {
+                                IF countPackages(r) AND NOT GROUP SUM 1 IF package(PackageLine pl) = p AND lot(pl) = lot(b) THEN {
+                                    beep(warningSound(), TRUE);
+                                    MESSAGE 'Этой партии не должно быть в текущей упаковке';
+                                } ELSE {
+                                    //                                IF NOT countPackages(r) AND NOT GROUP SUM 1 IF (initialDemand(ReceiptLine l, lot(b)) OR 
+                                    //                                                                                (createLots(type(r)) AND product(l) = product(lot(b)))) 
+                                    //                                                                            AND receipt(l) = r THEN {
+                                    //                                    beep(warningSound(), TRUE);
+                                    //                                    MESSAGE 'Этой партии не должно быть в текущей приемке';
+                                    //                                } ELSE
                                     NEWSESSION {
                                         NEW s = ReceiptScan {
                                             receipt(s) <- r;
@@ -281,9 +289,10 @@ scanBarcode(Receipt r, Package p, ReceiptScan rs) {
                                         APPLY;
                                         IF NOT canceled() THEN beep(successSound(), TRUE);
                                     }
+                                }
                             }
                         }
-                    }
+                    } 
                 }
             }
 }

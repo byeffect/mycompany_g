@@ -53,10 +53,15 @@ importFBA 'Импорт FBA'(){
         APPLY;
     }
 }
+showShipmentDashboard 'Отображать в отгрузках(моб.)' = DATA BOOLEAN (ShipmentType);
+EXTEND FORM shipmentType
+    PROPERTIES showShipmentDashboard(o)
+;
+
 
 EXTEND FORM shipmentDashboard
-    FILTERS customer(ss) = FBAPartner()
-    FILTERS customer(sd) = FBAPartner()
+    FILTERS customer(ss) = FBAPartner() OR showShipmentDashboard(type(ss))
+    FILTERS customer(sd) = FBAPartner() OR showShipmentDashboard(type(sd))
 ;
 DESIGN shipmentDashboard{
     caption = 'Отгрузка FBA';
@@ -80,30 +85,39 @@ importPlenty 'Импорт отгрузок Plenty'(){
         LOCAL order_id = STRING (INTEGER);
         LOCAL sku = STRING (INTEGER);
         LOCAL imei = STRING (INTEGER);
+        
+        LOCAL dates2 = STRING(INTEGER);
+        LOCAL ex_num2 = STRING(INTEGER);
+        LOCAL order_id2 = STRING(INTEGER);
+        LOCAL sku2 = STRING(INTEGER);
+        LOCAL imei2 = STRING(INTEGER);
+        LOCAL dateOutgoing = DATE(INTEGER);
+        
 
-        IMPORT CSV ',' NOHEADER WHERE '@row>2' FROM resultFile() TO date, ex_num, order_id, sku, imei;
+        IMPORT CSV ',' NOHEADER WHERE '@row>2' FROM resultFile() TO date, ex_num, order_id, sku, imei, dates2, ex_num2, order_id2, sku2, imei2, dateOutgoing;
         imei(INTEGER i) <- regexpMatch(imei(i), patternImei());
-        FOR INTEGER x = [GROUP MAX INTEGER i BY date(i)](DATE d) AND NOT shipmentNumber(idPlenty(d)) NEW s = Shipment DO{
+        FOR INTEGER x = [GROUP MAX INTEGER i BY dateOutgoing(i)](DATE d) AND NOT shipmentNumber(idPlenty(d)) NEW s = Shipment DO{
             number(s) <- idPlenty(d);
         }
-        FOR INTEGER x = [GROUP MAX INTEGER i BY date(i)](DATE d) AND Shipment s = shipmentNumber(idPlenty(d)) DO{
+        FOR INTEGER x = [GROUP MAX INTEGER i BY dateOutgoing(i)](DATE d) AND Shipment s = shipmentNumber(idPlenty(d)) DO{
             scheduledDateTime(s) <- DATETIME (d);
             scheduledDateTime(s) <- DATETIME(date(x));
             type(s) <- shipmentType('PLENTY');
             done(s) <- TRUE;
         }
-        FOR INTEGER x = [GROUP MAX INTEGER i BY product(lot(imei(i)))](Product product) AND Shipment s = shipmentNumber(idPlenty(DATE(date(x)))) AND NOT line(s, product) NEW line = ShipmentLine DO{
+        FOR INTEGER x = [GROUP MAX INTEGER i BY product(lot(imei(i)))](Product product) AND Shipment s = shipmentNumber(idPlenty(DATE(dateOutgoing(x)))) AND NOT line(s, product) NEW line = ShipmentLine DO{
             shipment(line) <- s;
             product(line) <- product;
         }
-        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(DATE(date(x))))
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(DATE(dateOutgoing(x))))
             AND ShipmentLine line = line(s, product(l)) DO{
             done(line, l) <- 1;
         }
-        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(DATE(date(x))))
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(DATE(dateOutgoing(x))))
             AND ShipmentLine line = line(s, product(l)) DO{
                 done(line) <- GROUP SUM done(line, Lot lot) IF done(line, lot);
         }
+//        quantity(ShipmentLine l, Location ll, Lot lt) <- 
 
         APPLY;
     }
@@ -133,4 +147,67 @@ onStarted()+{
         name(s) <- 'PLENTY';
         defaultLocation(s) <- GROUP MAX Location l IF countChildren(l);
     }
+}
+
+importPlentyShipment(){
+    //plenty
+    getValuesRange(idImportSupplier(), 'IMEI_BASE!A:X', defaultAccount());
+    valuesRows(INTEGER i) <- replace(replace(replace(valuesRows(i), '[', ''), ']', ''), '"', '');
+    LOCAL str = STRING();
+    str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+    stringToFile(str());
+    LOCAL date = DATE(INTEGER);
+    LOCAL ex_num = STRING (INTEGER);
+    LOCAL order_id = STRING (INTEGER);
+    LOCAL sku = STRING (INTEGER);
+    LOCAL imei = STRING (INTEGER);
+
+    LOCAL temp = STRING(INTEGER);
+    LOCAL dates2 = STRING(INTEGER);
+    LOCAL ex_num2 = STRING(INTEGER);
+    LOCAL order_id2 = STRING(INTEGER);
+    LOCAL sku2 = STRING(INTEGER);
+    LOCAL imei2 = STRING(INTEGER);
+    LOCAL dateOutgoing = DATE(INTEGER);
+
+    LOCAL productLoc = Product(INTEGER);
+
+
+
+    IMPORT CSV ',' NOHEADER WHERE '@row>2' FROM resultFile() TO date, ex_num, order_id, sku, imei, temp, dates2, ex_num2, order_id2, sku2, imei2, dateOutgoing;
+    productLoc(INTEGER i) <- product(lot(imei(i))) WHERE product(lot(imei(i)));
+
+    // imei(INTEGER i) <- regexpMatch(imei(i), patternImei());
+    FOR INTEGER x = [GROUP MAX INTEGER i BY dateOutgoing(i)](DATE d) AND NOT shipmentNumber(idPlenty(d)) NEW s = Shipment DO{
+        number(s) <- idPlenty(d);
+    }
+    FOR INTEGER x = [GROUP MAX INTEGER i BY dateOutgoing(i)](DATE d) AND Shipment s = shipmentNumber(idPlenty(d)) DO{
+        scheduledDateTime(s) <- DATETIME (d);
+        executionDateTime (s) <- DATETIME(d);
+        type(s) <- shipmentType('PLENTY');
+        done(s) <- TRUE;
+    }
+
+
+
+    FOR INTEGER x = [GROUP MAX INTEGER i BY productLoc(i), dateOutgoing(i)](Product  product, DATE d) AND Lot l = lot(imei(x)) AND Shipment s = shipmentNumber(idPlenty(d)) AND NOT line(s, product) NEW line = ShipmentLine DO{
+        shipment(line) <- s;
+        product(line) <- product;
+    }
+
+    FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(dateOutgoing(x)))
+        AND ShipmentLine line = line(s, product(l)) DO{
+        done(line, l) <- 1;
+        MESSAGE imei(x)  + '_' + nameProduct(l) NOWAIT;
+    }
+    FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(dateOutgoing(x)))
+        AND ShipmentLine line = line(s, product(l)) DO{
+        done(line) <- GROUP SUM done(line, Lot lot) IF done(line, lot);
+//        done(line, Location ll) <- //quantityScan(s, ll) WHERE shipment(l) = s;
+//        quantity(line, Location ll, Lot lt) <- quantityScan(s, lt, ll) IF product(l) = product(lt) WHERE shipment(l) = s;
+        
+    }
+
+    APPLY;
+
 }

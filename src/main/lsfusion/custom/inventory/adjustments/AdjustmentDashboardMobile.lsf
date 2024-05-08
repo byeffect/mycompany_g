@@ -16,7 +16,7 @@ markAsDone 'Завершить' (Adjustment a) {
     NEWSESSION {
         ASK incorrectLot(a) q = YESNO DO {
             IF q THEN
-                FOR adjustment(AdjustmentScan as) = a DO {
+                FOR adjustment(AdjustmentScan as) = a AND product(lot(as)) != defaultProduct(location(a)) DO {
                     NEW l = Lot {
                         id(l) <- id(lot(as));
                         product(l) <- defaultProduct(location(a));
@@ -84,7 +84,7 @@ FORM adjustmentDashboard 'Инвентаризация'
     OBJECTS ss = Adjustment
     PROPERTIES(ss) READONLY BACKGROUND IF quantityScan(ss) THEN RGB(255,255,212)
                             htmlAdjustment, quantityScan
-    PROPERTIES(l) create SHOWIF NOT ss
+    //PROPERTIES(l) create SHOWIF NOT ss
     PROPERTIES(ss) edit, markAsDone, stop
     FILTERS status(ss) = AdjustmentStatus.inProgress,
             location(ss) = l OR NOT l
@@ -134,7 +134,7 @@ DESIGN adjustmentDashboard {
                     fill = 2;
                     alignment = STRETCH;
                     horizontal = TRUE;
-                    MOVE PROPERTY(create(l)) { fill = 1; }
+//                    MOVE PROPERTY(create(l)) { fill = 1; }
                     MOVE PROPERTY(edit(ss)) { fill = 2; }
                     MOVE PROPERTY(markAsDone(ss)) { fill = 1; }
                 }

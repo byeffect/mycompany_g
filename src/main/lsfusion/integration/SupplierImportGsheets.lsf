@@ -146,11 +146,12 @@ importLocation(){
         LOCAL name = STRING(INTEGER);
 
         getValuesRange(idImportItemsGsheets(), 'SKU!A3:D', defaultAccount());
-        valuesRows(INTEGER i) <- replace(replace(valuesRows(i), '[', ''), ']', '');
+        valuesRows(INTEGER i) <- replace(replace(replace(valuesRows(i), '[', ''), ']', ''), '",', '";');
+        
         LOCAL str = STRING();
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
         stringToFile(str());
-        IMPORT CSV ',' NOHEADER FROM resultFile() TO id, type, address, name;
+        IMPORT CSV ';' NOHEADER FROM resultFile() TO id, type, address, name;
 
         FOR INTEGER x = [GROUP MAX INTEGER i BY address(i)](STRING[100] id) AND NOT location(id) AND Product p = productModel(id(x)) NEW l = Location DO{
             id(l) <- id;
@@ -350,21 +351,25 @@ importSupplier1'Импорт поставщика 1'(){
     }
     
     //создание приемок
+    LOCAL imported = BOOLEAN (Receipt);
     FOR [GROUP MAX INTEGER i BY boxId(i)] (STRING id) AND NOT receiptVendor(id) NEW r = Receipt DO{
         vendorReference(r) <- id;
         type(r) <- receiptType('receipt');
+        imported(r) <- TRUE;
     }
-    FOR INTEGER x = [GROUP MAX INTEGER i BY boxId(i)] (STRING id) AND Receipt r = receiptVendor(id) DO{vendor(r) <- partner('supplier1'); scheduledDateTime(r) <- DATETIME (receipt(x)); }
-
+    FOR INTEGER x = [GROUP MAX INTEGER i BY boxId(i)] (STRING id) AND Receipt r = receiptVendor(id) AND imported(r) DO{vendor(r) <- partner('supplier1'); scheduledDateTime(r) <- DATETIME (receipt(x)); }
+    
+    LOCAL imported = BOOLEAN (ReceiptLine);
     FOR INTEGER x = [GROUP MAX INTEGER i BY boxId(i), model(i)](STRING id, STRING model) AND Receipt r = receiptVendor(id) AND Product p = productModel(model)
         AND NOT line(r, p) NEW l = ReceiptLine DO{
 
         receipt(l) <- r;
         product(l) <- p;
+        imported(l) <- TRUE;
 
     }
     FOR INTEGER x = [GROUP MAX INTEGER i BY boxId(i), model(i)](STRING id, STRING model) AND Receipt r = receiptVendor(id) AND Product p = productModel(model)
-        AND ReceiptLine l = line(r, p) DO{
+        AND ReceiptLine l = line(r, p) AND imported(l) DO{
 
         product(l) <- p;
         importQuantity(l) <- quantity(x);
@@ -405,18 +410,20 @@ importSupplier1'Импорт поставщика 1'(){
             msg() <- (GROUP CONCAT STRING imei IF INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](imei) AND Lot lot = lot(imei) AND INTEGER xx = [GROUP MAX INTEGER j BY lower(boxNumber(j)), model(j), receipt(j)](lower(boxColumns(x)), skuOriginal(x), receiptColumns(x)) AND (GROUP SUM 1 IF quantity(InvLedger il, lot) AND NOT line[ReceiptInvLedger](il) == line(receiptVendor(boxId(xx)), product(lot))), '\n' ORDER imei);
             IF msg() THEN sendMessage(chat(), (CONCAT '\n', 'Импорт поставщика 1, таблица ' + receipt + '_', 'Найдено движение IMEI:', msg()));
         }
-        
+
+        LOCAL imported = BOOLEAN (Lot);
         FOR INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](STRING imei) AND Product p = productModel(skuOriginal(x)) AND
             NOT lot(imei) NEW l = Lot DO {
             id(l) <- imei;
             product(l) <- p;
+            imported(l) <- TRUE;
         }
-        FOR INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](STRING imei) AND Product p = productModel(skuOriginal(x)) AND Lot l = lot(imei) AND NOT (GROUP SUM 1 IF initialDemand(ReceiptLine rl, l)) DO {
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](STRING imei) AND Product p = productModel(skuOriginal(x)) AND Lot l = lot(imei) AND imported(l) AND NOT (GROUP SUM 1 IF initialDemand(ReceiptLine rl, l)) DO {
             product(l) <- p;
         }
 
 
-        FOR INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](STRING imei) AND Product p = productModel(skuOriginal(x)) AND Lot l = lot(imei) AND
+        FOR INTEGER x = [GROUP MAX INTEGER i BY imeiColumns(i)](STRING imei) AND Product p = productModel(skuOriginal(x)) AND Lot l = lot(imei) AND imported(l) AND
             INTEGER xx = [GROUP MAX INTEGER j BY lower(boxNumber(j)), model(j), receipt(j)](lower(boxColumns(x)), skuOriginal(x), receiptColumns(x))
             AND ReceiptLine line = line(receiptVendor(boxId(xx)), p) AND NOT (GROUP SUM 1 IF initialDemand(ReceiptLine rl, l)) DO initialDemand(line, l) <- 1;
 
@@ -499,16 +506,18 @@ importReceiptPnl 'Импорт приемки PnL' (DATE date) {
 
                     IF (GROUP SUM 1 IF date(INTEGER i) == date AND lower(status(i)) == 'new' AND item(i)) THEN NEW r = Receipt {
                         scheduledDateTime(r) <- DATETIME(date);
+                        executionDateTime(r) <- DATETIME(date);
                         type(r) <- pnlReceiptType();
                         location(r) <- pnlLocation();
                         vendor(r) <- partner('supplier' + vendor(GROUP MAX INTEGER i IF date(i) == date AND lower(status(i)) == 'new' AND item(i)));
-
+                        done(r) <- TRUE;
+                        
                         FOR date(INTEGER i) == date AND lower(status(i)) == 'new' AND item(i) NEW l = ReceiptLine DO {
                             receipt(l) <- r;
                             product(l) <- item(i);
                             initialDemand(l) <- quantity(i);
-                            //done(l) <- quantity(i);
-                            dataCost(l) <- NUMERIC[14,2](NUMERIC[14,2](sum(i)) / quantity(i));
+                            done(l) <- quantity(i);
+                            dataCost(l) <- NUMERIC[14,2](NUMERIC[14,2](sum(i)));
                         }
                     }
 
@@ -516,6 +525,9 @@ importReceiptPnl 'Импорт приемки PnL' (DATE date) {
                 }
     }
 }
+EXTEND FORM receipt
+    PROPERTIES (l) dataCost SHOWIF type(r) = pnlReceiptType()
+;
 
 importReceiptPnl 'Импорт приемки PnL' () {
     DIALOG dialogDate OBJECTS d INPUT DO {

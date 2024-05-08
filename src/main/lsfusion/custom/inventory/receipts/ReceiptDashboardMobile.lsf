@@ -167,9 +167,15 @@ DESIGN receiptDashboard {
 }
 
 startReceiving 'Начать приемку' (Receipt r) {
-    NEWSESSION APPLY { ready(r) <- TRUE; }
-    SEEK receiptDashboard.rr = r;
-    ACTIVATE TAB receiptDashboard.ready;
+    IF receiveDate(r) THEN {
+        NEWSESSION APPLY { ready(r) <- TRUE; }
+        SEEK receiptDashboard.rr = r;
+        ACTIVATE TAB receiptDashboard.ready;
+    }
+    ELSE {
+        beep(warningSound(), TRUE);
+        MESSAGE 'Выбранной приемки нет в плане';
+    }
 }
 
 EXTEND FORM receiptDashboard
@@ -192,9 +198,14 @@ EXTEND FORM receiptDashboard
     PROPERTIES() barcode ON CHANGE {
         INPUT b = STRING DO
             FOR Receipt r = (GROUP MAX Receipt rc IF vendorReference(rc) = b AND (NOT done(rc) OR partially(rc)) AND NOT canceled(rc)) DO {
-                NEWSESSION APPLY { ready(r) <- TRUE; }
-                SEEK receiptDashboard.rr = r;
-                IF NOT canceled() THEN beep(infoSound(), TRUE);
+                IF receiveDate(r) THEN{
+                    NEWSESSION APPLY { ready(r) <- TRUE; }
+                    SEEK receiptDashboard.rr = r;
+                    IF NOT canceled() THEN beep(infoSound(), TRUE);
+                } ELSE {
+                    beep(warningSound(), TRUE);
+                    MESSAGE 'Выбранной приемки нет в плане';
+                }
             } ELSE {
                 beep(warningSound(), TRUE);
                 MESSAGE 'Не найдено указанного номера приемки';

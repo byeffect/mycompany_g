@@ -85,33 +85,35 @@ DESIGN adjustmentMobile {
 scanBarcode(Adjustment s, AdjustmentScan ss) {
     INPUT bn = NUMERIC DO
         FOR STRING b = STRING(bn) DO {
-            IF NOT lot(b) THEN {
-                IF defaultProduct(location(s)) THEN {
-                    beep(warningSound(), TRUE);
-                    ASK 'Не найдена партия с кодом ' + b + '. Создать новую с товаром ' + name(defaultProduct(location(s))) + '?' DO NEWSESSION {
-                        NEW l = Lot {
-                            id(l) <- b;
-                            product(l) <- defaultProduct(location(s));
+            IF length(b) = 15 THEN{
+                IF NOT lot(b) THEN {
+                    IF defaultProduct(location(s)) THEN {
+                        beep(warningSound(), TRUE);
+                        ASK 'Не найдена партия с кодом ' + b + '. Создать новую с товаром ' + name(defaultProduct(location(s))) + '?' DO NEWSESSION {
+                            NEW l = Lot {
+                                id(l) <- b;
+                                product(l) <- defaultProduct(location(s));
+                                APPLY;
+                            }
+                        }
+                    } ELSE
+                        createLot(b);
+                }
+                IF lot(b) THEN {
+                    IF scan(s, lot(b)) THEN {
+                        beep(warningSound(), TRUE);
+                        MESSAGE 'Код партии уже был просканирован';
+                    } ELSE {
+                        NEWSESSION {
+                            NEW ls = AdjustmentScan {
+                                adjustment(ls) <- s;
+                                lot(ls) <- lot(b);
+                                SEEK adjustmentMobile.ss = ls;
+                            }
                             APPLY;
                         }
-                    } 
-                } ELSE
-                    createLot(b);
-            }
-            IF lot(b) THEN {
-                IF scan(s, lot(b)) THEN {
-                    beep(warningSound(), TRUE);
-                    MESSAGE 'Код партии уже был просканирован';
-                } ELSE {
-                    NEWSESSION {
-                        NEW ls = AdjustmentScan {
-                            adjustment(ls) <- s;
-                            lot(ls) <- lot(b);
-                            SEEK adjustmentMobile.ss = ls;
-                        }
-                        APPLY;
+                        IF NOT canceled() THEN beep(successSound(), TRUE);
                     }
-                    IF NOT canceled() THEN beep(successSound(), TRUE);
                 }
             }
         }
