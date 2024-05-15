@@ -1,0 +1,36 @@
+MODULE EmailReportCustom;
+
+REQUIRE EmailReport, InventoryPartnerReportCustom;
+
+NAMESPACE Email;
+
+FORM dialogReportDate 'Выберите дату отчета:'
+    OBJECTS d = DATE PANEL
+    PROPERTIES date '' = VALUE(d)
+;
+
+DESIGN dialogReportDate {
+    OBJECTS {
+        MOVE PROPERTY(date) { fontSize = 16; fill = 1; }
+    }
+    PROPERTY(formOk()) { changeKey = 'ENTER'; }
+}
+
+inventoryPartnerReport 'Отчет по остаткам'(DATE d, STRING emails){    
+    PRINT inventoryPartnerReport OBJECTS d = d XLSX TO exportFile; 
+    EMAIL
+        SUBJECT ( 'Отчет по остаткам в разрезе поставщиков ' + toChar(d, 'dd.MM.yyyy'))
+        TO emails
+        ATTACH exportFile() NAME 'inventoryPartnerReport_' + toChar(d, 'dd.MM.yyyy');
+    APPLY;
+}
+
+inventoryPartnerReport 'Отчет по остаткам'(){
+    DIALOG dialogReportDate OBJECTS d INPUT DO {
+        inventoryPartnerReport(d, (GROUP CONCAT email(ReportRecipient r), ', ' ORDER email(r), r));
+    }
+}
+
+EXTEND FORM emailReports 
+    PROPERTIES TOOLBAR DRAW r inventoryPartnerReport()
+;
