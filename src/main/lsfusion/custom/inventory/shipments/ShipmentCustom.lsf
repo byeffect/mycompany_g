@@ -1,6 +1,6 @@
 MODULE ShipmentCustom;
 
-REQUIRE ShipmentPickingLot, LotCustom;
+REQUIRE ShipmentPickingLot, LotCustom, ShipmentDashboardMobile;
 
 NAMESPACE Inventory;
 
@@ -12,3 +12,24 @@ CONSTRAINT SET(done(ShipmentLine l) (-) picked(l)) AND checkLocation(product(l))
 
 CONSTRAINT SET(done(ShipmentLine l) (-) pickedLot(l)) AND checkLotLocation(product(l))
     MESSAGE 'Количество размещенных партий не соответствует принятому количеству'; 
+
+fillShipmentLines 'Заполнить остатками' (Shipment s) {
+    FOR onHand(location(s), Lot l) > 0 DO {
+        IF NOT (GROUP MAX ShipmentLine sl IF shipment(sl) = s AND  product(sl) = product(l)) THEN NEW line = ShipmentLine{
+            shipment(line) <- s;
+            product(line) <- product(l);
+        }
+        NEW ls = ShipmentScan {
+            shipment(ls) <- s;
+            lot(ls) <- l;
+        }
+    }
+
+    done(s) <- TRUE;
+    done(ShipmentLine l) <- quantityScan(l) WHERE shipment(l) = s;
+    done(ShipmentLine l, Lot lt) <- quantityScan(s, lt) IF product(l) = product(lt) WHERE shipment(l) = s;
+    done(ShipmentLine l, Location ll) <- quantityScan(s, ll) WHERE shipment(l) = s;
+    quantity(ShipmentLine l, Location ll, Lot lt) <- quantityScan(s, lt, ll) IF product(l) = product(lt) WHERE shipment(l) = s;
+}
+
+EXTEND FORM shipment PROPERTIES fillShipmentLines(s) DRAW itm TOOLBAR;
