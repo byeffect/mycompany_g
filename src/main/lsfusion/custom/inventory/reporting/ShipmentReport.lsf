@@ -149,3 +149,6 @@ DESIGN shipmentReport {
         MOVE PROPERTY(nameShipmentType2) { caption = ''; placeholder = 'Type'; };
     }
 }
+
+
+EXTEND FORM shipment PROPERTIES READONLY idDefaultModel(itm) AFTER name(itm);

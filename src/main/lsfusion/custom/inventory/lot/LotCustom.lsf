@@ -20,14 +20,16 @@ firstReceiptLine =
 
 vendor (Lot l) = OVERRIDE dataVendor(l), vendor(firstReceiptLine(l));
 nameVendor 'Vendor' (Lot l) = name(vendor(l));
+sku 'SKU' (Lot l) = idDefaultModel(product(l));
 
 EXTEND FORM lot
-    PROPERTIES(l) nameVendor
+    PROPERTIES(l) nameVendor, sku
 ;
 
 DESIGN lot {
     header {
         MOVE PROPERTY(nameVendor(l)) { alignment = STRETCH; };
+        MOVE PROPERTY(sku(l)) { alignment = STRETCH; }
     }
 }
 

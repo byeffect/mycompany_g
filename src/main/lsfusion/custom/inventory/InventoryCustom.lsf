@@ -1,6 +1,6 @@
 MODULE InventoryCustom;
 
-REQUIRE InventorySettings, Sound;
+REQUIRE InventorySettings, Sound, ProductMoves, ProductModel, InventoryValuation, InventoryReport;
 
 NAMESPACE Inventory;
 
@@ -27,3 +27,9 @@ DESIGN options {
 
 barcode = DATA LOCAL STRING () CHANGEKEY 'SPACE';
 barcodeNumeric = DATA LOCAL NUMERIC () CHANGEKEY 'SPACE';
+
+sku 'SKU' (InvLedger l) = idDefaultModel(product(l));
+
+EXTEND FORM productMoves PROPERTIES READONLY sku(il) AFTER nameProduct(il);
+EXTEND FORM inventoryValuation PROPERTIES READONLY idDefaultModel(p) AFTER name(p);
+EXTEND FORM inventoryReport PROPERTIES READONLY 'SKU' = idDefaultModel(rp);
