@@ -1,0 +1,68 @@
+MODULE InventoryPartnerReportGSSheets;
+
+REQUIRE ServiceAccountGoogle, SupplierImportGsheets, InventoryPartnerReportCustom;
+
+NAMESPACE Inventory;
+
+idInventoryPartnerReportGsheets 'ID таблицы для выгрузки остатков по "Поставщик 2"' = DATA STRING () CHARWIDTH 50;
+
+exportInventoryPartnerReport 'Экспорт остатков на дату по поставщику' (Partner partner, DATE date){
+    NEWSESSION {
+        LOCAL nameSheet = STRING();
+        LOCAL startRow = INTEGER ();
+
+        nameSheet() <- 'Stock Fact';
+        startRow() <- 2;
+
+        getValuesRange(idInventoryPartnerReportGsheets(), (CONCAT '!', nameSheet(), 'A:B'), defaultAccount());
+        
+        IF valuesFile() THEN {
+            //clear
+            FOR valuesRows(INTEGER i) AND i >= startRow() DO {
+                rangeClear(STRING s) <- s WHERE s == CONCAT '!', nameSheet(), 'A' + i;
+                rangeClear(STRING s) <- s WHERE s == CONCAT '!', nameSheet(), 'B' + i;
+            }
+
+            batchClearByCells(idInventoryPartnerReportGsheets(), defaultAccount());
+            
+            // update
+            LOCAL numberRow = INTEGER (Product, Partner, DATE);
+            numberRow(Product p, partner, date) <- startRow() - 1 + PARTITION SUM 1 IF onHandA(p, partner, date) ORDER p BY date, partner;
+            
+            FOR onHandA(Product p, partner, date) INLINE DO {
+                dataToUpdate(CONCAT '!', nameSheet(), 'A' + numberRow(p, partner, date)) <- '"' + idDefaultModel(p) + '"';
+                dataToUpdate(CONCAT '!', nameSheet(), 'B' + numberRow(p, partner, date)) <- STRING(onHandA(p, partner, date));
+            }
+            
+            batchUpdateByCells(idInventoryPartnerReportGsheets(), defaultAccount());
+        }
+    }
+        
+}
+
+exportInventoryReportSupplier2 ' Экспорт остатков по "Поставщик 2"' (DATE date){
+    exportInventoryPartnerReport(partner('supplier2'), date);
+}
+
+exportInventoryReportSupplier2 ' Экспорт остатков по "Поставщик 2"' (){
+    exportInventoryReportSupplier2(currentDate());
+}
+
+EXTEND FORM integrationData
+    PROPERTIES() idInventoryPartnerReportGsheets
+    PROPERTIES() exportInventoryReportSupplier2  
+;
+
+DESIGN integrationData{
+    serviceAccountsGoogle{
+        NEW optionsExport{
+            caption = 'Настройки экспорта';                        
+            MOVE PROPERTY (idInventoryPartnerReportGsheets());
+            NEW actionExport{
+                caption = 'Действия';
+                horizontal = TRUE;
+                MOVE PROPERTY (exportInventoryReportSupplier2());
+            }
+        }
+    }
+}
