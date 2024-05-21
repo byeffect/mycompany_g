@@ -17,11 +17,7 @@ exportInventoryPartnerReport 'Экспорт остатков на дату по
         getValuesRange(idInventoryPartnerReportGsheets(), (CONCAT '!', nameSheet(), 'A:B'), defaultAccount());
         
         IF valuesFile() THEN {
-            //clear
-            FOR valuesRows(INTEGER i) AND i >= startRow() DO {
-                rangeClear(STRING s) <- s WHERE s == CONCAT '!', nameSheet(), 'A' + i;
-                rangeClear(STRING s) <- s WHERE s == CONCAT '!', nameSheet(), 'B' + i;
-            }
+            rangeClear(STRING s) <- s WHERE s == CONCAT '!', nameSheet(), 'A' + startRow() + ':B';
 
             batchClearByCells(idInventoryPartnerReportGsheets(), defaultAccount());
             
