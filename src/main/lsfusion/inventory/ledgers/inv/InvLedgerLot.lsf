@@ -106,6 +106,8 @@ DESIGN item {
     }
 }
 
+in = ABSTRACT BOOLEAN (InvLedger, Lot);
+
 EXTEND FORM lots
     PROPERTIES(l) READONLY onHand
     
@@ -117,7 +119,7 @@ EXTEND FORM lots
     PROPERTIES(il) NEWSESSION EDIT
     FILTERGROUP activeInv
         FILTER '{Active}' active(il) DEFAULT
-    FILTERS quantity(il, l)
+    FILTERS quantity(il, l) OR in(il, l)
 ;
 
 DESIGN lots {

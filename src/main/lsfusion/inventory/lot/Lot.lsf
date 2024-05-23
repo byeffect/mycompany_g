@@ -13,9 +13,11 @@ product 'Product' = DATA Product (Lot) NONULL INDEXED;
 idProduct 'Product ID' (Lot l) = id(product(l)) IN id;
 nameProduct 'Product' (Lot l) = name(product(l)) IN id;
 
+readonlyId = ABSTRACT BOOLEAN (Lot);
+
 FORM lot 'Lot'
     OBJECTS l = Lot PANEL
-    PROPERTIES(l) id, idProduct, nameProduct
+    PROPERTIES(l) id READONLYIF readonlyId(l), idProduct, nameProduct
     
     EDIT Lot OBJECT l
 ;

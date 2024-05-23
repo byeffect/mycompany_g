@@ -33,7 +33,7 @@ FORM imeiMobile 'IMEI'
     OBJECTS il = InvLedger
     PROPERTIES READONLY 
                         dateTime(il), htmlInvLedger(il)
-    FILTERS quantity(il, l)
+    FILTERS quantity(il, l) OR in(il, l)
 ;
 
 DESIGN imeiMobile {
@@ -70,3 +70,51 @@ showMobileForms() + {
     IF permit(currentUser(), navigatorElementCanonicalName('Inventory.imeiMobile')) THEN
         SHOW imeiMobile NOWAIT;
 }
+
+originalLot 'Исходная партия'  = DATA Lot (Lot);
+idOriginalLot 'Исходная партия' (Lot l) = id(originalLot(l));
+
+readonlyId (Lot l) += TRUE IF originalLot(l);
+
+in (InvLedger i, Lot l) += TRUE IF quantity(i, originalLot(l));
+
+EXTEND FORM lot
+    PROPERTIES(l) idOriginalLot SHOWIF originalLot(l)
+
+    EDIT Lot OBJECT l
+;
+
+FORM dialogMobileLot 'Выбор партии'
+    OBJECTS l = Lot
+    PROPERTIES(l) READONLY id, idProduct, nameProduct
+;
+
+createULNLot 'Создать БУ' () {
+    DIALOG dialogMobileLot OBJECTS l INPUT DO {
+        IF l THEN NEWSESSION {
+            NEW newLot = Lot {
+                originalLot(newLot) <- l;
+                id(newLot) <- id(l) + 'ULN';
+                seriesNumber(newLot) <- seriesNumber(l);
+                                
+                DIALOG lot OBJECTS l = newLot DOCKED DO {
+                    seek(l);
+                } ELSE {
+                    RETURN;
+                }
+                
+                APPLY;
+            }
+        }
+    }    
+}
+
+WHEN LOCAL SETCHANGED(originalLot(Lot l)) DO {
+    id(l) <- id(originalLot(l)) + 'ULN';
+    seriesNumber(l) <- seriesNumber(originalLot(l));
+}
+
+EXTEND FORM lots
+    PROPERTIES (l) READONLY idOriginalLot
+    PROPERTIES () createULNLot DRAW l TOOLBAR
+;
