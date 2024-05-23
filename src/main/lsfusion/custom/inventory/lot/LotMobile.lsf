@@ -97,10 +97,7 @@ createULNLot 'Создать БУ' () {
     DIALOG dialogMobileLot OBJECTS l INPUT DO {
         IF l THEN NEWSESSION {
             NEW newLot = Lot {
-                originalLot(newLot) <- l;
-//                id(newLot) <- id(l);
-//                id(l) <- id(newLot) + 'ULN';
-                    
+                originalLot(newLot) <- l;                    
                 seriesNumber(newLot) <- seriesNumber(l);
                                 
                 DIALOG lot OBJECTS l = newLot DOCKED DO {} ELSE RETURN;
