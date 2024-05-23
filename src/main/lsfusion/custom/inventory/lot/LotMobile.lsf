@@ -98,7 +98,9 @@ createULNLot 'Создать БУ' () {
         IF l THEN NEWSESSION {
             NEW newLot = Lot {
                 originalLot(newLot) <- l;
-                id(newLot) <- id(l) + 'ULN';
+//                id(newLot) <- id(l);
+//                id(l) <- id(newLot) + 'ULN';
+                    
                 seriesNumber(newLot) <- seriesNumber(l);
                                 
                 DIALOG lot OBJECTS l = newLot DOCKED DO {} ELSE RETURN;
@@ -110,8 +112,19 @@ createULNLot 'Создать БУ' () {
 }
 
 WHEN LOCAL SETCHANGED(originalLot(Lot l)) DO {
-    id(l) <- id(originalLot(l)) + 'ULN';
+    IF PREV(originalLot(l)) AND id(l) THEN {
+        id(PREV(originalLot(l))) <- id(l);
+    }
+    
+    id(l) <- id(originalLot(l));
+    id(originalLot(l)) <- id(l) + 'ULN';
     seriesNumber(l) <- seriesNumber(originalLot(l));
+}
+
+WHEN LOCAL DROPPED (originalLot(Lot l)) DO {
+    IF PREV(originalLot(l)) AND id(l) THEN {
+        id(PREV(originalLot(l))) <- id(l);
+    }
 }
 
 EXTEND FORM lots
