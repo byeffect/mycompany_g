@@ -72,7 +72,7 @@ showMobileForms() + {
 }
 
 originalLot 'Исходная партия'  = DATA Lot (Lot);
-idOriginalLot 'Исходная партия' (Lot l) = id(originalLot(l));
+idOriginalLot 'Исходная партия' (Lot l) = id(originalLot(l)) IN id;
 
 readonlyId (Lot l) += TRUE IF originalLot(l);
 
@@ -80,9 +80,13 @@ in (InvLedger i, Lot l) += TRUE IF quantity(i, originalLot(l));
 
 EXTEND FORM lot
     PROPERTIES(l) idOriginalLot SHOWIF originalLot(l)
-
-    EDIT Lot OBJECT l
 ;
+
+DESIGN lot {
+    header {
+        MOVE PROPERTY(idOriginalLot(l)) { alignment = STRETCH; };
+    }
+}
 
 FORM dialogMobileLot 'Выбор партии'
     OBJECTS l = Lot
@@ -97,11 +101,7 @@ createULNLot 'Создать БУ' () {
                 id(newLot) <- id(l) + 'ULN';
                 seriesNumber(newLot) <- seriesNumber(l);
                                 
-                DIALOG lot OBJECTS l = newLot DOCKED DO {
-                    seek(l);
-                } ELSE {
-                    RETURN;
-                }
+                DIALOG lot OBJECTS l = newLot DOCKED DO {} ELSE RETURN;
                 
                 APPLY;
             }
