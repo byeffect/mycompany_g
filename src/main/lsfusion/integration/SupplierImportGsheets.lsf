@@ -138,7 +138,7 @@ importSupplier2 'Импорт данных поставщика 2'(){
 }
 
 //импорт размещений
-importLocation(){
+importLocation 'Импорт размещений'(){
     NEWSESSION {
         LOCAL id = STRING(INTEGER);
         LOCAL type = STRING(INTEGER);
@@ -157,9 +157,9 @@ importLocation(){
             id(l) <- id;
             parent(l) <- location('MX000001');
         }
-        
-        FOR INTEGER x = [GROUP MAX INTEGER i BY address(i)](STRING[100] id) AND Location l = location(id) AND Product p = productModel(id(x)) DO{
-            name(l) <- id;
+        FOR INTEGER x = [GROUP MAX INTEGER  i BY id(i)](STRING idModel) AND NOT location(address(x)) AND Product p = productModel(idModel) DO location(location('MX000001'), p) <- NULL;
+        FOR INTEGER x = [GROUP MAX INTEGER  i BY id(i)](STRING idModel) AND Location l = location(address(x)) AND Product p = productModel(idModel) DO{
+            name(l) <- address(x);
             location(parent(l), p) <- l;
         }
         APPLY;
@@ -433,7 +433,7 @@ importSupplier1'Импорт поставщика 1'(){
 
 
 EXTEND FORM integrationData
-    PROPERTIES() importItemsGsheets, importSupplier2, importSupplier1, idImportItemsGsheets, idImportSupplier, idImportSupplier1, idReceiptNL
+    PROPERTIES() importItemsGsheets, importSupplier2, importSupplier1, importLocation, idImportItemsGsheets, idImportSupplier, idImportSupplier1, idReceiptNL
     PROPERTIES() toNotify, nameChat
 ;
 
@@ -451,6 +451,7 @@ DESIGN integrationData{
                 caption = 'Действия';
                 horizontal = TRUE;
                 MOVE PROPERTY (importItemsGsheets());
+                MOVE PROPERTY (importLocation());
                 MOVE PROPERTY (importSupplier2());
                 MOVE PROPERTY (importSupplier1());
             }

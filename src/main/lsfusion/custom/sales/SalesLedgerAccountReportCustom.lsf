@@ -6,7 +6,77 @@ NAMESPACE Sales;
 
 sku 'SKU' (SalesLedger l) = idDefaultModel(item(l));
 
+
 EXTEND FORM salesLedgerReport
     PROPERTIES sku(sl)
     PROPERTIES sku(l)
 ;
+
+plPeriod 'Период' = DATA LOCAL INTERVAL[DATE] ();
+plFrom = from(plPeriod());
+plTo = to(plPeriod());
+plPartner = DATA LOCAL Partner();
+namePlPartner 'Контрагент' = name(plPartner());
+plCategory = DATA LOCAL Category ();
+namePlCategory 'Направление' = name(plCategory());
+
+filtered (SalesLedger l) = (date(l) >= plFrom() AND date(l) <= plTo()) AND (category(item(l)) = plCategory() OR NOT plCategory()) AND (customer(l) = plPartner() OR NOT plPartner());
+
+revenue 'Revenue' (Product p, SalesAccount a) = GROUP SUM revenue(SalesLedger l, a) IF item(l) = p AND filtered(l);// (date(l) >= plFrom() AND date(l) <= plTo());
+revenue 'Выручка (общая)' (Product p) = GROUP SUM revenue(p, SalesAccount a);
+cost 'Cost' (Product p, SalesAccount a) = GROUP SUM cost(SalesLedger l, a) IF item(l) = p AND filtered(l);// (date(l) >= plFrom() AND date(l) <= plTo());
+cost 'Себестоимость (общая)' (Product p) = GROUP SUM cost(p, SalesAccount a);
+amount (Product p, SalesAccount a) = GROUP SUM amount(SalesLedger l, a) IF item(l) = p AND filtered(l);// (date(l) >= plFrom() AND date(l) <= plTo());
+
+filtered (SalesAccount a) = GROUP SUM 1 IF cost(Product p, a) OR revenue(p, a);
+
+amount (SalesAccount a, DATE d) = GROUP SUM amount(SalesLedger l, a) IF filtered(l) AND numberMonth(l) = extractMonthNumber(d) AND year(l) = extractYear(d);
+
+FORM reportPL 'Отчет PL'
+    PROPERTIES plPeriod(), namePlPartner(), namePlCategory()
+
+    OBJECTS s = Product, sll = SalesLedger, sa = SalesAccount
+    PROPERTIES (s) 'Направление' = level2, idDefaultModel, revenue, cost
+    PROPERTIES (s, sa) amount COLUMNS (sa) HEADER (name(sa))
+    PROPERTIES profit 'Прибыль' = revenue(s) (-) cost(s) * (IF cost(s) > revenue(s) THEN -1 ELSE 1 )
+    FILTERS revenue(s) OR cost(s)
+    FILTERS filtered(sa)
+    
+    OBJECTS a = SalesAccount, d = DATE
+    PROPERTIES name(a), amount(a, d) COLUMNS (d) HEADER (extractMonthName(d) + ' ' + extractYear(d))
+    FILTERS iterate(d, plFrom(), plTo()) AND d = firstDayOfMonth(d) 
+    FILTERS amount(a, d)
+;
+
+
+DESIGN reportPL{
+    OBJECTS {
+        NEW filter{
+            horizontal = TRUE;
+            MOVE PROPERTY (plPeriod());
+            MOVE PROPERTY (namePlCategory());
+            MOVE PROPERTY (namePlPartner());
+        }
+        NEW report{
+            tabbed = TRUE;
+            alignment = STRETCH;
+            fill = 3;
+            NEW account{
+                caption = 'Статьи затрат';
+                MOVE BOX (a); 
+            }
+            NEW sku{
+                caption = 'SKU';
+                MOVE BOX (s);
+            }
+        }
+    }
+}
+
+NAVIGATOR {
+    sales{
+        reporting{
+             NEW reportPL;
+        }
+    }
+}

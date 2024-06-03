@@ -1,6 +1,6 @@
 MODULE AdjustmentTaskTask;
 
-REQUIRE Adjustment, AdjustmentCanceled, LocationProduct;
+REQUIRE Adjustment, AdjustmentCanceled, AdjustmentDashboardMobile, LocationProduct;
 
 NAMESPACE Inventory;
 
@@ -12,7 +12,15 @@ dateTime 'Date' = DATA DATETIME (AdjustmentTask) IN id;
 WHEN LOCAL SET (AdjustmentTask b IS AdjustmentTask) DO dateTime(b) <- currentDateTime();
 
 author 'Author' = DATA Employee (AdjustmentTask);
+nameAuthor 'Author' (AdjustmentTask t) = name[Partner](author(t));
 WHEN SET(AdjustmentTask t IS AdjustmentTask) AND NOT author(t) AND currentUser() IS Employee DO author(t) <- currentUser();
+
+done 'Done' = DATA BOOLEAN (AdjustmentTask);
+actualTask = GROUP MAX AdjustmentTask t IF t IS AdjustmentTask AND NOT done(t);
+
+CONSTRAINT SET (AdjustmentTask t IS AdjustmentTask) AND actualTask() != t MESSAGE 
+    'Запрещено создавать задание, пока не закрыто предыдущее';
+
 
 note 'Note' = DATA ISTRING[50] (AdjustmentTask);
 
@@ -40,7 +48,7 @@ countCanceledAdjustment 'Отменен' (AdjustmentTask t) = countAdjustment(t,
 countInProgressAdjustment 'В процессе' (AdjustmentTask t) = countAdjustment(t, AdjustmentStatus.inProgress);
 countDoneAdjustment 'Выполнен' (AdjustmentTask t) = countAdjustment(t, AdjustmentStatus.done);
 
-nameProducts 'Products' (Adjustment a) = GROUP CONCAT name(Product p) IF location(Location lp, p) = location(a), ',' ORDER p, lp;
+nameProducts 'Products' (Adjustment a) = GROUP CONCAT idDefaultModel(Product p) IF location(Location lp, p) = location(a), ',' ORDER p, lp;
 
 adjustment (AdjustmentTask t, Location l) = GROUP MIN Adjustment a BY task(a), location(a);
 adjustmentCreate 'Создать инвентаризации' (AdjustmentTask t) {
@@ -55,7 +63,7 @@ adjustmentCreate 'Создать инвентаризации' (AdjustmentTask t
 
 FORM adjustmentTask 'Задание на инвентаризацию'
     OBJECTS t = AdjustmentTask PANEL
-    PROPERTIES (t) number, dateTime, author, note, nameType,
+    PROPERTIES (t) number, dateTime, nameAuthor, note, nameType, done,
         countCanceledAdjustment, countInProgressAdjustment, countDoneAdjustment
 
     OBJECTS l = Location
@@ -66,6 +74,7 @@ FORM adjustmentTask 'Задание на инвентаризацию'
 
     OBJECTS a = Adjustment
     PROPERTIES(a) READONLY dateTime, number, nameStatus, nameLocation, doneDate, nameProducts, theoreticalQuantity, realQuantity
+    PROPERTIES (a) DELETE 
     FILTERS task(a) == t
     PROPERTIES(t) adjustmentCreate DRAW a TOOLBAR
     
@@ -80,7 +89,8 @@ DESIGN adjustmentTask {
             NEW headerLeft {
                 MOVE PROPERTY (number(t));
                 MOVE PROPERTY (dateTime(t));
-                MOVE PROPERTY (author(t));
+                MOVE PROPERTY (nameAuthor(t));
+                MOVE PROPERTY (done(t));
                 MOVE PROPERTY (note(t));
             }
             NEW headerRight {
@@ -116,7 +126,7 @@ DESIGN adjustmentTask {
 
 FORM adjustmentTasks 'Задания на инвентаризацию'
     OBJECTS t = AdjustmentTask 
-    PROPERTIES (t) READONLY number, dateTime, author, note, nameType
+    PROPERTIES (t) READONLY number, dateTime, nameAuthor, note, nameType
     PROPERTIES (t) NEWSESSION NEW, EDIT, DELETE
     
     OBJECTS a = Adjustment
@@ -126,6 +136,10 @@ FORM adjustmentTasks 'Задания на инвентаризацию'
     LIST AdjustmentTask OBJECT t
 ;
 
+EXTEND FORM adjustmentDashboard
+    FILTERS task(sd) = actualTask() 
+;
+    
 NAVIGATOR {
     operations {
         NEW adjustmentTasks;

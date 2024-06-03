@@ -24,12 +24,8 @@ fillShipmentLines 'Заполнить остатками' (Shipment s) {
             lot(ls) <- l;
         }
     }
-
-    done(s) <- TRUE;
-    done(ShipmentLine l) <- quantityScan(l) WHERE shipment(l) = s;
-    done(ShipmentLine l, Lot lt) <- quantityScan(s, lt) IF product(l) = product(lt) WHERE shipment(l) = s;
-    done(ShipmentLine l, Location ll) <- quantityScan(s, ll) WHERE shipment(l) = s;
-    quantity(ShipmentLine l, Location ll, Lot lt) <- quantityScan(s, lt, ll) IF product(l) = product(lt) WHERE shipment(l) = s;
+    APPLY;
+    markAsDone(s);
 }
 
 EXTEND FORM shipment PROPERTIES fillShipmentLines(s) DRAW itm TOOLBAR;

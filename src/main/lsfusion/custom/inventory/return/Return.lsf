@@ -1,0 +1,231 @@
+MODULE Return;
+
+REQUIRE InventoryReportLotCustom, InventoryCustom, LotCustom;
+
+NAMESPACE Return;
+
+CLASS ABSTRACT Return 'Возврат';
+
+type 'Тип'= ABSTRACT CASE STRING (Return);
+dateTime 'Дата и время' = DATA DATETIME (Return);
+dateTimeCompleted 'Дата и время окончания' = DATA DATETIME (Return);
+user = DATA CustomUser (Return);
+nameUser 'Пользователь' (Return r) = name(user(r));
+lot = DATA Lot (Return);
+imei (Return r) = id(lot(r));
+idLot 'IMEI' (Return r) = IF lot(r) THEN id(lot(r)) ELSE 'UN000000000001';
+product (Return r) = product(lot(r));
+nameVendor 'Поставщик' (Return r) = OVERRIDE nameVendor(lot(r)), 'Не найден';
+idDefaultModel 'SKU(по партии)' (Return r) = idDefaultModel(product(r));
+dataSku 'SKU' = DATA Product (Return);
+idDataSku 'SKU' (Return r)= idDefaultModel(dataSku(r));
+sku 'SKU' (Return r) = OVERRIDE idDataSku(r), idDefaultModel(product(r));
+
+CLASS ReturnFBM 'Возврат FBM' : Return;
+
+type (Return r) += WHEN r IS ReturnFBM THEN 'FBM';
+plentyOrder 'Заказ PLENTY' = DATA STRING[200] (ReturnFBM);
+externalOrder 'External order number' = DATA STRING[200] (ReturnFBM);
+@defineStaticObject(statusPlenty, 'Статус Plenty');
+
+EXTEND CLASS StatusPlenty {
+    eleven '11',
+    elevenDotOne '11.1',
+    elevenDotTwo '11.2',
+    tenDotThree '10.3',
+    empty 'Пустышка'
+}
+
+statusPlenty = DATA StatusPlenty (ReturnFBM);
+nameStatusPlenty 'Статус Plenty' (ReturnFBM r) = name(statusPlenty(r));
+idProblem 'Код проблемы' = DATA STRING[30] (ReturnFBM);
+
+barcodeNumeric 'IMEI' = DATA LOCAL NUMERIC () CHANGEKEY 'F4';
+
+@defineStaticObject(status, 'Статус');
+
+EXTEND CLASS Status{
+    check 'Проверка',
+    return 'Вернули деньги'
+}
+
+status = DATA Status (Return);
+nameStatus 'Статус' (ReturnFBM r) = name(status(r));
+colorStatus(ReturnFBM r) = CASE
+    WHEN status(r) = Status.check THEN RGB(51, 255, 51)
+    WHEN status(r) = Status.return THEN RGB(153, 255, 153)
+;
+    
+FORM printReturnFBM
+    OBJECTS r = ReturnFBM
+    PROPERTIES (r) sku, idProblem, nameVendor, plentyOrder, externalOrder, idLot
+;
+print 'Печать' ABSTRACT LIST (Return);
+
+creareReturnWithoutLot 'Нет IMEI'(){
+}
+print (ReturnFBM r) +{
+    IF r IS ReturnFBM THEN PRINT printReturnFBM OBJECTS r = r PDF;
+}
+in 'Отм' = DATA  LOCAL BOOLEAN (ReturnFBM);
+
+printReturns 'Печать'(){
+    PRINT printReturnFBM FILTERS in(r) PDF;
+}
+complete 'Готово' (Return r) {
+    dateTimeCompleted(r) <- currentDateTime();
+    APPLY NESTED LOCAL;
+}
+
+FORM dashboardReturnFBM 'Обработка возвратов FBM'
+    //FBM
+    OBJECTS fbm = ReturnFBM NULL PANEL
+    PROPERTIES() barcodeNumeric ON CHANGE {
+        INPUT s = STRING LIST id(Lot ll) DO {
+            IF lot(s) THEN {
+                NEW return = ReturnFBM {
+                    dateTime(return) <- currentDateTime();
+                    user(return) <- currentUser();
+                    lot(return) <- lot(s);
+                    SEEK dashboardReturnFBM.fbm = return;
+                    beep(infoSound(), TRUE);
+                }
+            } ELSE {
+                beep(warningSound(), TRUE);
+            }
+        }
+    }
+    PROPERTIES creareReturnWithoutLot() ON CHANGE {
+        NEW return = ReturnFBM {
+            dateTime(return) <- currentDateTime();
+            user(return) <- currentUser();
+            SEEK dashboardReturnFBM.fbm = return;
+            beep(infoSound(), TRUE);
+        }
+    }
+    PROPERTIES (fbm) idLot, sku, plentyOrder, externalOrder, nameStatusPlenty, idProblem, print, complete
+    
+    OBJECTS r = ReturnFBM FIRST 
+    PROPERTIES (r) READONLY  BACKGROUND colorStatus(r) dateTime ORDER DESC, nameUser, idLot, idDefaultModel
+    PROPERTIES (r) READONLYIF isReadonly() BACKGROUND colorStatus(r) sku, plentyOrder, externalOrder, nameStatusPlenty, idProblem, nameStatus, DELETE GRID 
+    PROPERTIES in(r) FIRST, printReturns() TOOLBAR DRAW r
+;
+
+@extendFormEditable(dashboardReturnFBM);
+
+DESIGN dashboardReturnFBM{
+    OBJECTS {
+        NEW action{
+            caption = '';
+            horizontal = TRUE;
+            MOVE PROPERTY (barcodeNumeric()) {charWidth = 25; fontSize = 18; }
+            MOVE PROPERTY (creareReturnWithoutLot()) {fontSize = 18; }
+        }
+        NEW info{
+            horizontal = TRUE;
+            MOVE BOX(fbm) {fill = 3; }
+            NEW button{
+                fill = 0.5;
+                MOVE PROPERTY (print(fbm)) {fontSize = 18;}
+                MOVE PROPERTY (complete(fbm)) {fontSize = 18; }
+            }
+        }
+        NEW history{
+            alignment = STRETCH;
+            fill = 3;
+            MOVE BOX (r) { caption = 'Возвраты FBM'; }
+        }
+    }
+}
+
+CLASS ReturnFBA 'Возврат FBA' : Return;
+
+type (Return r) += WHEN r IS ReturnFBA THEN 'FBA';
+
+FORM printReturnFBA
+    OBJECTS r = ReturnFBA
+    PROPERTIES (r) sku, nameVendor, idLot
+;
+
+print (ReturnFBA r) + {
+    IF r IS ReturnFBA THEN PRINT printReturnFBA OBJECTS r = r PDF;
+}
+
+FORM dashboardReturnFBA 'Обработка возвратов FBA'
+    //FBA
+    OBJECTS fba = ReturnFBA NULL PANEL
+    PROPERTIES() barcodeNumeric ON CHANGE {
+        INPUT s = STRING LIST id(Lot ll) DO {
+            IF lot(s) THEN {
+                NEW return = ReturnFBA {
+                    dateTime(return) <- currentDateTime();
+                    user(return) <- currentUser();
+                    lot(return) <- lot(s);
+                    SEEK dashboardReturnFBA.fba = return;
+                    beep(infoSound(), TRUE);
+                }
+            } ELSE {
+                beep(warningSound(), TRUE);
+            }
+        }
+    }
+    PROPERTIES creareReturnWithoutLot() ON CHANGE {
+        NEW return = ReturnFBA {
+            dateTime(return) <- currentDateTime();
+            user(return) <- currentUser();
+            SEEK dashboardReturnFBA.fba = return;
+            beep(infoSound(), TRUE);
+        }
+    }
+    PROPERTIES (fba) idLot, sku, print, complete
+
+    OBJECTS r = ReturnFBA FIRST
+    PROPERTIES (r) READONLY dateTime ORDER DESC, nameUser, idLot, idDefaultModel, sku
+;
+
+
+
+@extendFormEditable(dashboardReturnFBA);
+
+DESIGN dashboardReturnFBA{
+    OBJECTS {
+        NEW action{
+            caption = '';
+            horizontal = TRUE;
+            MOVE PROPERTY (barcodeNumeric()) {charWidth = 25; fontSize = 18; }
+            MOVE PROPERTY (creareReturnWithoutLot()) {fontSize = 18; }
+        }
+        NEW info{
+            horizontal = TRUE;
+            MOVE BOX(fba) {fill = 3; }
+            NEW button{
+                fill = 0.5;
+                MOVE PROPERTY (print(fba)) {fontSize = 18;}
+                MOVE PROPERTY (complete(fba)) {fontSize = 18; }
+            }
+        }
+        NEW history{
+            alignment = STRETCH;
+            fill = 3;
+            MOVE BOX (r) { caption = 'Возвраты FBA'; }
+        }
+    }
+}
+
+
+FORM returnsList 'Возвраты'
+    OBJECTS r = Return FIRST
+    PROPERTIES (r) READONLY  BACKGROUND colorStatus(r) type, dateTime ORDER DESC, dateTimeCompleted,  nameUser, idLot, idDefaultModel, print TOOLBAR DRAW r CHANGEABLE 
+
+    LIST Return OBJECT r
+;
+
+NAVIGATOR {
+    stock{
+        NEW FOLDER returns 'Учет возвратов'{
+            NEW dashboardReturnFBM;
+            NEW dashboardReturnFBA;
+            NEW returnsList;
+        }
+    }
+}

@@ -12,7 +12,9 @@ EXTEND FORM shipment
 
 readonlyShipment = DATA LOCAL BOOLEAN ();
 
-htmlShipment '' (Shipment r) = HTML (CONCAT '&nbsp;', '<b>' + customerReference(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameCustomer(r) + '</font>');
+additionalInfo = ABSTRACT CASE STRING (Shipment);
+
+htmlShipment '' (Shipment r) = HTML (CONCAT '&nbsp;', '<b>' + customerReference(r) + '</b>', '<font size="-2">' + number(r) + '</font>', toChar(scheduledDate(r), 'DD/MM'), '<font size="-1">' + nameCustomer(r) + '</font>', additionalInfo(r));
 
 htmlShipment '' (ShipmentLine l) = HTML ('<div>' + (CONCAT '&nbsp;', '<b>' + nameProduct(l) + '</b>', '(' + idDefaultModelProduct(l) + ')', '<i>' + nameLocation(location(l), product(l)) + '</i>', '<font size="-2">(' + locations(location(l), product(l)) + ')</font>') + '</div>');
 

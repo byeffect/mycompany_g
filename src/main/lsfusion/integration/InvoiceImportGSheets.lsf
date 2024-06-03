@@ -364,6 +364,7 @@ importInvoiceEbay 'Импорт реализации с eBay' (Country c, DATE d
             dateTime(i) <- dateTimeToDateTime(date, TIME('23:59:59'));
             type(i) <- ebayInvoiceType();
             customer(i) <- FBAPartner();
+            location(i) <- location('MX000004');
             //status(i) <- InvoiceStatus.draft;
         }
         FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == ebayInvoiceType() AND customer(ii) == FBAPartner() ORDER dateTime(ii), ii) DO {
@@ -386,35 +387,35 @@ importInvoiceEbay 'Импорт реализации с eBay' (Country c, DATE d
                 taxAmount(Tax tt, il) <- NULL;
                 IF sellerTax(x) > 0 OR sellerTax(x) < 0 THEN {
                     in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог, взимаемый продавцом';
-                    taxAmount(Tax tt, il) <- sellerTax(x) WHERE name(tt) == 'Налог, взимаемый продавцом';
+                    taxAmount(Tax tt, il) <- -sellerTax(x) WHERE name(tt) == 'Налог, взимаемый продавцом';
                 }
                 IF ebayTax(x) > 0 OR ebayTax(x) < 0 THEN {
                     in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог, взимаемый eBay';
-                    taxAmount(Tax tt, il) <- ebayTax(x) WHERE name(tt) == 'Налог, взимаемый eBay';
+                    taxAmount(Tax tt, il) <- -ebayTax(x) WHERE name(tt) == 'Налог, взимаемый eBay';
                 }
                 IF internationalFees(x) > 0 OR internationalFees(x) < 0 THEN {
                     in(il, Tax tt) <- TRUE WHERE name(tt) == 'Международный сбор';
-                    taxAmount(Tax tt, il) <- internationalFees(x) WHERE name(tt) == 'Международный сбор';
+                    taxAmount(Tax tt, il) <- -internationalFees(x) WHERE name(tt) == 'Международный сбор';
                 }
 
                 dataAmount(il, CustomSalesAccount aa) <- NULL;
                 IF packagingAndShipping(x) > 0 OR packagingAndShipping(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- packagingAndShipping(x) WHERE id(aa) == 'packaging_and_shipping';
+                    dataAmount(il, CustomSalesAccount aa) <- -packagingAndShipping(x) WHERE id(aa) == 'packaging_and_shipping';
                 }
                 IF fixedSalesCommission(x) > 0 OR fixedSalesCommission(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- fixedSalesCommission(x) WHERE id(aa) == 'fixed_sales_commission';
+                    dataAmount(il, CustomSalesAccount aa) <- -fixedSalesCommission(x) WHERE id(aa) == 'fixed_sales_commission';
                 }
                 IF variableSalesCommission(x) > 0 OR variableSalesCommission(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- variableSalesCommission(x) WHERE id(aa) == 'variable_sales_commission';
+                    dataAmount(il, CustomSalesAccount aa) <- -variableSalesCommission(x) WHERE id(aa) == 'variable_sales_commission';
                 }
                 IF highRateOfNotDescribedItemsFee(x) > 0 OR highRateOfNotDescribedItemsFee(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- highRateOfNotDescribedItemsFee(x) WHERE id(aa) == 'high_rate_of_not_described_items_fees';
+                    dataAmount(il, CustomSalesAccount aa) <- -highRateOfNotDescribedItemsFee(x) WHERE id(aa) == 'high_rate_of_not_described_items_fees';
                 }
                 IF belowAverageServiceFees(x) > 0 OR belowAverageServiceFees(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- belowAverageServiceFees(x) WHERE id(aa) == 'below_average_service_fees';
+                    dataAmount(il, CustomSalesAccount aa) <- -belowAverageServiceFees(x) WHERE id(aa) == 'below_average_service_fees';
                 }
                 IF charityDonation(x) > 0 OR charityDonation(x) < 0 THEN {
-                    dataAmount(il, CustomSalesAccount aa) <- charityDonation(x) WHERE id(aa) == 'charity_donation';
+                    dataAmount(il, CustomSalesAccount aa) <- -charityDonation(x) WHERE id(aa) == 'charity_donation';
                 }
                 LOCAL other = NUMERIC[14,2]();
                 other() <- (GROUP SUM total(INTEGER j) IF date(j) == date(x) AND reference(j) == reference(x) AND article(j) == article(x) AND type(j) == 'Andere Gebühr');
@@ -481,7 +482,7 @@ onStarted() + {
         name(a) <- 'Переменная часть комиссии за продажу';
     }
     IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'high_rate_of_not_described_items_fees') THEN NEW a = CustomSalesAccount {
-        id(a) <- 'high_rate_of_not_described_items_fee';
+        id(a) <- 'high_rate_of_not_described_items_fees';
         name(a) <- 'Вознаграждение за очень высокий процент "товаров, не соответствующих описанию"';
     }
     IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'below_average_service_fees') THEN NEW a = CustomSalesAccount {

@@ -57,7 +57,7 @@ showShipmentDashboard 'Отображать в отгрузках(моб.)' = DA
 EXTEND FORM shipmentType
     PROPERTIES showShipmentDashboard(o)
 ;
-
+additionalInfo(Shipment r) += WHEN showShipmentDashboard(type(r)) THEN STRING('<font size="-1">' + nameLocation(r) + ' -> ' + nameToLocation(r) + '</font>');
 
 EXTEND FORM shipmentDashboard
     FILTERS customer(ss) = FBAPartner() OR showShipmentDashboard(type(ss))
@@ -198,13 +198,13 @@ importPlentyShipment(){
     FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(dateOutgoing(x)))
         AND ShipmentLine line = line(s, product(l)) DO{
         done(line, l) <- 1;
-        MESSAGE imei(x)  + '_' + nameProduct(l) NOWAIT;
+//        MESSAGE imei(x)  + '_' + nameProduct(l) NOWAIT;
     }
     FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(dateOutgoing(x)))
         AND ShipmentLine line = line(s, product(l)) DO{
         done(line) <- GROUP SUM done(line, Lot lot) IF done(line, lot);
-//        done(line, Location ll) <- //quantityScan(s, ll) WHERE shipment(l) = s;
-//        quantity(line, Location ll, Lot lt) <- quantityScan(s, lt, ll) IF product(l) = product(lt) WHERE shipment(l) = s;
+        done(line, Location ll) <- GROUP SUM 1 IF done(line, Lot lt) AND ll = prevMinLocationOnHand(lt);
+        quantity(line, Location ll, Lot lt) <- 1 WHERE done(line, lt) AND ll = prevMinLocationOnHand(lt);
         
     }
 
