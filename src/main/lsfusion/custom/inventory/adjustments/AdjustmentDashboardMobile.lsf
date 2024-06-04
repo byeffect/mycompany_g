@@ -28,6 +28,7 @@ markAsDone 'Завершить' (Adjustment a) {
                 } 
         } ELSE RETURN;
         done(a) <- TRUE;
+        dateTime(a) <- MAX dateTime(a), (GROUP MAX dateTime(AdjustmentScan s) IF adjustment(s) = a); 
         FOR quantityScan(a, Product p) OR onHand(location(a), p) DO NEW al = AdjustmentLine {
             adjustment(al) <- a;
             product(al) <- p;
