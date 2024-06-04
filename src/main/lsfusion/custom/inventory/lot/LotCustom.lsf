@@ -87,6 +87,7 @@ checkLocation 'Проверка по ячейкам' = DATA BOOLEAN (Category);
 checkLotLocation 'Проверка по партиям/ячейкам' = DATA BOOLEAN (Category);
 
 checkLotQuantity1 'Проверка на количество по партии больше 1' = DATA BOOLEAN (Category);
+checkLotNegative 'Проверка на количество по партии меньше 0' = DATA BOOLEAN (Category);
 checkLotOnHand 'Проверка на остаток по партии' = DATA BOOLEAN (Category);
 
 EXTEND FORM category
@@ -113,6 +114,10 @@ checkLotLocation (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND
 checkLotQuantity (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLotQuantity1(c) MATERIALIZED;
 CONSTRAINT SET(onHand(Lot l) > 1) AND checkLotQuantity(product(l))
     MESSAGE 'Запрещено иметь остаток по партии больше 1';
+
+checkLotNegative (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLotNegative(c) MATERIALIZED;
+CONSTRAINT SET(onHand(Lot l) < 0) AND checkLotNegative(product(l))
+    MESSAGE 'Запрещено иметь остаток по партии меньше 0';
 
 checkLotOnHand (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLotOnHand(c) MATERIALIZED;
 CONSTRAINT SET(onHand(Location l, Product p) (-) onHandLot(l, p)) AND checkLotOnHand(p)
