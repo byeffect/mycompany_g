@@ -91,7 +91,7 @@ checkLotNegative 'Проверка на количество по партии �
 checkLotOnHand 'Проверка на остаток по партии' = DATA BOOLEAN (Category);
 
 EXTEND FORM category
-    PROPERTIES(c) checkLot, checkLocation, checkLotLocation, checkLotQuantity1, checkLotOnHand
+    PROPERTIES(c) checkLot, checkLocation, checkLotLocation, checkLotQuantity1, checkLotNegative, checkLotOnHand
 ;
 
 DESIGN category {
@@ -102,6 +102,7 @@ DESIGN category {
             MOVE PROPERTY(checkLocation(c));
             MOVE PROPERTY(checkLotLocation(c));
             MOVE PROPERTY(checkLotQuantity1(c));
+            MOVE PROPERTY(checkLotNegative(c));
             MOVE PROPERTY(checkLotOnHand(c));
         }
     }
