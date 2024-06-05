@@ -1,11 +1,10 @@
 MODULE SalesLedgerAccountReportCustom;
 
-REQUIRE SalesLedgerAccountReport, ProductModel;
+REQUIRE SalesLedgerAccountReport, ProductModel, SalesLedgerInvoiceCustom;
 
 NAMESPACE Sales;
 
 sku 'SKU' (SalesLedger l) = idDefaultModel(item(l));
-
 
 EXTEND FORM salesLedgerReport
     PROPERTIES sku(sl)
@@ -15,12 +14,24 @@ EXTEND FORM salesLedgerReport
 plPeriod 'Период' = DATA LOCAL INTERVAL[DATE] ();
 plFrom = from(plPeriod());
 plTo = to(plPeriod());
-plPartner = DATA LOCAL Partner();
-namePlPartner 'Контрагент' = name(plPartner());
+
 plCategory = DATA LOCAL Category ();
 namePlCategory 'Направление' = name(plCategory());
 
-filtered (SalesLedger l) = (date(l) >= plFrom() AND date(l) <= plTo()) AND (category(item(l)) = plCategory() OR NOT plCategory()) AND (customer(l) = plPartner() OR NOT plPartner());
+plCountry = DATA LOCAL Country ();
+namePlCountry 'Страна' = name(plCountry());
+
+plMarketplace = DATA LOCAL Marketplace();
+namePlMarketplace 'Площадка' = name(plMarketplace());
+
+plEStore = DATA LOCAL EStore();
+namePlEStore 'Магазин' = name(plEStore());
+
+
+filtered (SalesLedger l) = (date(l) >= plFrom() AND date(l) <= plTo()) AND (category(item(l)) = plCategory() OR NOT plCategory()) 
+    AND (marketplace(l) = plMarketplace() OR NOT plMarketplace()) AND (country(l) = plCountry() OR NOT plCountry())
+    AND (eStore(l) = plEStore() OR NOT plEStore())
+;
 
 revenue 'Revenue' (Product p, SalesAccount a) = GROUP SUM revenue(SalesLedger l, a) IF item(l) = p AND filtered(l);// (date(l) >= plFrom() AND date(l) <= plTo());
 revenue 'Выручка (общая)' (Product p) = GROUP SUM revenue(p, SalesAccount a);
@@ -29,11 +40,11 @@ cost 'Себестоимость (общая)' (Product p) = GROUP SUM cost(p, S
 amount (Product p, SalesAccount a) = GROUP SUM amount(SalesLedger l, a) IF item(l) = p AND filtered(l);// (date(l) >= plFrom() AND date(l) <= plTo());
 
 filtered (SalesAccount a) = GROUP SUM 1 IF cost(Product p, a) OR revenue(p, a);
-
 amount (SalesAccount a, DATE d) = GROUP SUM amount(SalesLedger l, a) IF filtered(l) AND numberMonth(l) = extractMonthNumber(d) AND year(l) = extractYear(d);
+filter(SalesAccount a) = GROUP SUM 1 IF amount(SalesLedger l, a) AND filtered(l);
 
 FORM reportPL 'Отчет PL'
-    PROPERTIES plPeriod(), namePlPartner(), namePlCategory()
+    PROPERTIES() plPeriod, namePlMarketplace, namePlEStore, namePlCategory, namePlCountry
 
     OBJECTS s = Product, sll = SalesLedger, sa = SalesAccount
     PROPERTIES (s) 'Направление' = level2, idDefaultModel, revenue, cost
@@ -45,7 +56,7 @@ FORM reportPL 'Отчет PL'
     OBJECTS a = SalesAccount, d = DATE
     PROPERTIES name(a), amount(a, d) COLUMNS (d) HEADER (extractMonthName(d) + ' ' + extractYear(d))
     FILTERS iterate(d, plFrom(), plTo()) AND d = firstDayOfMonth(d) 
-    FILTERS amount(a, d)
+    FILTERS filter(a)
 ;
 
 
@@ -53,9 +64,11 @@ DESIGN reportPL{
     OBJECTS {
         NEW filter{
             horizontal = TRUE;
-            MOVE PROPERTY (plPeriod());
+            MOVE PROPERTY (plPeriod()) {charWidth = 25; valueAlignment = CENTER; };
             MOVE PROPERTY (namePlCategory());
-            MOVE PROPERTY (namePlPartner());
+            MOVE PROPERTY (namePlCountry());
+            MOVE PROPERTY (namePlMarketplace());
+            MOVE PROPERTY (namePlEStore());
         }
         NEW report{
             tabbed = TRUE;

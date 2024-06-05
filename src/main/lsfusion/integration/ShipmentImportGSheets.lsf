@@ -148,7 +148,6 @@ onStarted()+{
         defaultLocation(s) <- GROUP MAX Location l IF countChildren(l);
     }
 }
-
 importPlentyShipment(){
     //plenty
     getValuesRange(idImportSupplier(), 'IMEI_BASE!A:X', defaultAccount());
@@ -203,8 +202,8 @@ importPlentyShipment(){
     FOR INTEGER x = [GROUP MAX INTEGER i BY imei(i)](STRING imei) AND Lot l = lot(imei) AND Shipment s = shipmentNumber(idPlenty(dateOutgoing(x)))
         AND ShipmentLine line = line(s, product(l)) DO{
         done(line) <- GROUP SUM done(line, Lot lot) IF done(line, lot);
-        done(line, Location ll) <- GROUP SUM 1 IF done(line, Lot lt) AND ll = prevMinLocationOnHand(lt);
-        quantity(line, Location ll, Lot lt) <- 1 WHERE done(line, lt) AND ll = prevMinLocationOnHand(lt);
+        done(line, Location ll) <- GROUP SUM 1 IF done(line, Lot lt) AND ll = (OVERRIDE prevMinLocationOnHand(lt), location(location(line), product(line)));
+        quantity(line, Location ll, Lot lt) <- 1 WHERE done(line, lt) AND ll = (OVERRIDE prevMinLocationOnHand(lt), location(location(line), product(line)));
         
     }
 

@@ -1,0 +1,22 @@
+MODULE SalesLedgerInvoiceCustom;
+
+REQUIRE SalesLedgerInvoice, InvoiceCustom;
+
+NAMESPACE Sales;
+
+marketplace = ABSTRACT Marketplace (SalesLedger) MATERIALIZED;
+nameMarketplace 'Площадка' (SalesLedger l) = name(marketplace(l));
+
+marketplace(InvoiceSalesLedger l) += marketplace(line(l));
+
+eStore = ABSTRACT EStore (SalesLedger) MATERIALIZED;
+nameEStore 'Магазин' (SalesLedger l) = name(eStore(l));
+
+eStore(InvoiceSalesLedger l) += eStore(line(l));
+
+country = ABSTRACT Country (SalesLedger) MATERIALIZED;
+nameCountry 'Страна' (SalesLedger l) = name(country(l));
+
+country(InvoiceSalesLedger l) += country(line(l));
+
+

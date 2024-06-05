@@ -1,0 +1,32 @@
+MODULE InvoiceCustom;
+
+REQUIRE Invoice;
+
+NAMESPACE Invoicing;
+
+CLASS EStore 'Магазин';
+name 'Наименование' = DATA STRING[30] (EStore) IN id;
+
+eStore = DATA EStore (Invoice);
+nameEStore 'Магазин' (Invoice i) = name(eStore(i));
+
+eStore (InvoiceLine l) = eStore(invoice(l));
+nameEStore 'Магазин' (InvoiceLine l) = name(eStore(l));
+
+@defineStaticObject(marketplace, 'Площадка');
+EXTEND CLASS Marketplace{
+    amazon 'Amazon',
+    ebay 'Ebay'
+}
+
+marketplace = DATA Marketplace (Invoice);
+nameMarketplace 'Площадка' (Invoice i) = name(marketplace(i));
+
+marketplace (InvoiceLine l) = marketplace(invoice(l));
+nameMarketplace 'Площадка' (InvoiceLine l) = name(marketplace(l));
+
+country = DATA Country (Invoice);
+nameCountry 'Страна' (Invoice i) = name(country(i));
+
+country(InvoiceLine l) = country(invoice(l));
+nameCountry 'Страна' (InvoiceLine l) = name(country(l));

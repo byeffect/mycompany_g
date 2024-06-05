@@ -1,8 +1,21 @@
 MODULE InvoiceImportGSheets;
 
-REQUIRE ShipmentImportGSheets, InvoiceShipment, SalesLedgerAccountInvoice;
+REQUIRE ShipmentImportGSheets, InvoiceShipment, SalesLedgerInvoiceCustom, SalesLedgerAccountInvoice;
 
 NAMESPACE Invoicing;
+CLASS ImportTable 'Таблица для импорта';
+
+eStore = DATA EStore (ImportTable);
+nameEStore 'Магазин' (ImportTable t) = name(eStore(t));
+
+country = DATA Country (ImportTable);
+nameCountry 'Страна' (ImportTable t) = name(country(t));
+active '{Active}' = DATA BOOLEAN (ImportTable);
+
+marketplace = DATA Marketplace (ImportTable);
+nameMarketplace 'Площадка' (ImportTable t) = name(marketplace(t));
+idTable 'ID таблицы' = DATA STRING (ImportTable) CHARWIDTH 40;
+typeOrder 'Тип зказа' = DATA STRING (ImportTable) CHARWIDTH 20;
 
 customerReference '{Customer_reference}' = DATA STRING[30] (InvoiceLine) INDEXED;
 
@@ -22,9 +35,9 @@ CONSTRAINT (SET(activeImportInvoiceAmazon(Country c)) OR CHANGED( idImportInvoic
     AND activeImportInvoiceAmazon(c) AND NOT (idImportInvoiceAmazon(c) AND typeImportInvoiceAmazon(c))
     MESSAGE 'Не заполнены ID таблицы и Тип зказа';
 
-importInvoiceAmazon 'Импорт реализации с Амазон' (Country c, DATE date) {
+importInvoiceAmazon 'Импорт реализации с Амазон' (ImportTable t, DATE date) {
     NEWSESSION {
-        getValuesRange(idImportInvoiceAmazon(c), 'SKU!A2:B', defaultAccount());
+        getValuesRange(idTable(t), 'SKU!A2:B', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', '";');
         LOCAL str = STRING();
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
@@ -57,7 +70,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (Country
         LOCAL item = Item(INTEGER);
         LOCAL index = INTEGER(INTEGER);
         
-        getValuesRange(idImportInvoiceAmazon(c), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A9:AA', defaultAccount());
+        getValuesRange(idTable(t), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A9:AA', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
         stringToFile(str());
@@ -69,18 +82,21 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (Country
                                                      marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
                                                      otherTransactionFees = Y, other = Z, total = AA;
         
-        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == typeImportInvoiceAmazon(c) AND DATE(dateTime(i)) == date;
+        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == typeOrder(t) AND DATE(dateTime(i)) == date;
         index(INTEGER i) <- PARTITION SUM 1 ORDER i BY reference(i), item(i);
         
-        IF NOT (GROUP MAX Invoice i IF date(i) == date AND type(i) == amazonInvoiceType() AND customer(i) == FBAPartner()) THEN NEW i = Invoice {
+        IF NOT (GROUP MAX Invoice i IF date(i) == date AND type(i) == amazonInvoiceType() AND customer(i) == FBAPartner() AND eStore(i) = eStore(t) AND country(i) = country(t)) THEN NEW i = Invoice {
             dateTime(i) <- dateTimeToDateTime(date, TIME('23:59:59'));
             type(i) <- amazonInvoiceType();
             customer(i) <- FBAPartner();
             location(i) <- location('MX000004');
             ready(i) <- TRUE;
+            country(i) <- country(t);
+            marketplace(i) <- marketplace(t);
+            eStore(i) <- eStore(t);
             //status(i) <- InvoiceStatus.draft;
         }
-        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == amazonInvoiceType() AND customer(ii) == FBAPartner()  ORDER dateTime(ii), ii) DO {
+        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == amazonInvoiceType() AND customer(ii) == FBAPartner() AND eStore(i) = eStore(t) AND country(i) = country(t) ORDER dateTime(ii), ii) DO {
             LOCAL part = INTEGER(InvoiceLine);
             part(InvoiceLine l) <- PARTITION SUM 1 IF invoice(l) == i ORDER index(l), l BY invoice(l), customerReference(l), item(l);
 
@@ -144,7 +160,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (Country
             }
 
             FOR DATE nextDate = sum(date,1) AND lastDayOfMonth(date) == date DO {
-                getValuesRange(idImportInvoiceAmazon(c), lpad(STRING(extractMonthNumber(nextDate)),2,'0') + '!A9:AA', defaultAccount());
+                getValuesRange(idTable(t), lpad(STRING(extractMonthNumber(nextDate)),2,'0') + '!A9:AA', defaultAccount());
                 valuesRows(INTEGER ii) <- replace(replace(replace(replace(replace(valuesRows(ii), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
                 str() <- GROUP CONCAT valuesRows(INTEGER j), '\n' ORDER i;
                 stringToFile(str());
@@ -156,7 +172,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (Country
                                                              marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
                                                              otherTransactionFees = Y, other = Z, total = AA;
 
-                item(INTEGER ii) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(ii))) IF type(ii) == typeImportInvoiceAmazon(c) AND DATE(dateTime(ii)) == date;
+                item(INTEGER ii) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(ii))) IF type(ii) == typeOrder(t) AND DATE(dateTime(ii)) == date;
                 index(INTEGER ii) <- PARTITION SUM 1 ORDER ii BY reference(ii), item(ii);
 
                 FOR [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) NEW l = InvoiceLine DO {
@@ -223,26 +239,25 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (Country
     } 
 }
 
-importInvoiceAmazon 'Импорт реализации с Амазон' (Country c) {
+importInvoiceAmazon 'Импорт реализации с Амазон' (ImportTable t) {
     DIALOG dialogDate OBJECTS d INPUT DO {
-        importInvoiceAmazon(c,d);
+        IF marketplace(t) = Marketplace.amazon THEN importInvoiceAmazon(t, d);
+        ELSE MESSAGE 'Только для Amazon';
     }
 }
 
 importInvoiceAmazon 'Импорт реализации с Амазон' () {
     DIALOG dialogDate OBJECTS d INPUT DO {
-        FOR activeImportInvoiceAmazon(Country c) DO {
-            importInvoiceAmazon(c,d);
+        FOR active(ImportTable t) AND marketplace(t) = Marketplace.amazon DO {
+            importInvoiceAmazon(t, d);
         }
     }
 }
 
 EXTEND FORM integrationData
-    OBJECTS ca 'Импорт реализации с Амазон' = Country
-    PROPERTIES(ca) activeImportInvoiceAmazon, name READONLY, idImportInvoiceAmazon, typeImportInvoiceAmazon
-    PROPERTIES(ca) TOOLBAR importInvoiceAmazon
-    FILTERGROUP activeImportInvoiceAmazon
-        FILTER '{Active}' activeImportInvoiceAmazon(ca) DEFAULT
+    OBJECTS it = ImportTable
+    PROPERTIES (it) nameMarketplace, nameCountry, nameEStore, idTable, typeOrder, active
+    PROPERTIES (it) NEW, EDIT, DELETE
     PROPERTIES() nameAmazonInvoiceType, importInvoiceAmazon
 ;
 DESIGN integrationData{
@@ -312,9 +327,9 @@ CONSTRAINT (SET(activeImportInvoiceEbay(Country c)) OR CHANGED( idImportInvoiceE
     AND activeImportInvoiceEbay(c) AND NOT (idImportInvoiceEbay(c) AND typeImportInvoiceEbay(c))
     MESSAGE 'Не заполнены ID таблицы и Тип зказа';
 
-importInvoiceEbay 'Импорт реализации с eBay' (Country c, DATE date) {
+importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DATE date) {
     NEWSESSION {
-        getValuesRange(idImportInvoiceEbay(c), 'SKU!A2:B', defaultAccount());
+        getValuesRange(idTable(t), 'SKU!A2:B', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', '";');
         LOCAL str = STRING();
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
@@ -346,7 +361,7 @@ importInvoiceEbay 'Импорт реализации с eBay' (Country c, DATE d
         LOCAL item = Item(INTEGER);
         LOCAL index = INTEGER(INTEGER);
 
-        getValuesRange(idImportInvoiceEbay(c), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A9:AH', defaultAccount());
+        getValuesRange(idTable(t), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A9:AH', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
         stringToFile(str());
@@ -357,17 +372,20 @@ importInvoiceEbay 'Импорт реализации с eBay' (Country c, DATE d
                                                      highRateOfNotDescribedItemsFee = AD, belowAverageServiceFees = AE,
                                                      internationalFees = AF, charityDonation = AG, total = AH;
 
-        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == typeImportInvoiceEbay(c) AND date(i) == date;
+        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == typeOrder(t) AND date(i) == date;
         index(INTEGER i) <- PARTITION SUM 1 ORDER i BY reference(i), item(i);
 
-        IF NOT (GROUP MAX Invoice i IF date(i) == date AND type(i) == ebayInvoiceType() AND customer(i) == FBAPartner()) THEN NEW i = Invoice {
+        IF NOT (GROUP MAX Invoice i IF date(i) == date AND type(i) == ebayInvoiceType() AND customer(i) == FBAPartner() AND eStore(i) = eStore(t) AND country(i) = country(t)) THEN NEW i = Invoice {
             dateTime(i) <- dateTimeToDateTime(date, TIME('23:59:59'));
             type(i) <- ebayInvoiceType();
             customer(i) <- FBAPartner();
             location(i) <- location('MX000004');
+            country(i) <- country(t);
+            marketplace(i) <- marketplace(t);
+            eStore(i) <- eStore(t);
             //status(i) <- InvoiceStatus.draft;
         }
-        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == ebayInvoiceType() AND customer(ii) == FBAPartner() ORDER dateTime(ii), ii) DO {
+        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == ebayInvoiceType() AND customer(ii) == FBAPartner() AND eStore(i) = eStore(t) AND country(i) = country(t) ORDER dateTime(ii), ii) DO {
             LOCAL part = INTEGER(InvoiceLine);
             part(InvoiceLine l) <- PARTITION SUM 1 IF invoice(l) == i ORDER index(l), l BY invoice(l), customerReference(l), item(l);
 
@@ -428,26 +446,23 @@ importInvoiceEbay 'Импорт реализации с eBay' (Country c, DATE d
     }
 }
 
-importInvoiceEbay 'Импорт реализации с eBay' (Country c) {
+importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t) {
     DIALOG dialogDate OBJECTS d INPUT DO {
-        importInvoiceEbay(c,d);
+        IF marketplace(t) = Marketplace.ebay THEN importInvoiceEbay(t, d);
+        ELSE MESSAGE 'Только для ebay';
     }
 }
 
 importInvoiceEbay 'Импорт реализации с eBay' () {
     DIALOG dialogDate OBJECTS d INPUT DO {
-        FOR activeImportInvoiceEbay(Country c) DO {
-            importInvoiceEbay(c,d);
+        FOR active(ImportTable t) AND marketplace(t) = Marketplace.ebay DO {
+            importInvoiceEbay(t, d);
         }
     }
 }
 
 EXTEND FORM integrationData
-    OBJECTS ce 'Импорт реализации с eBay' = Country
-    PROPERTIES(ce) activeImportInvoiceEbay, name READONLY, idImportInvoiceEbay, typeImportInvoiceEbay
-    PROPERTIES(ce) TOOLBAR importInvoiceEbay
-    FILTERGROUP activeImportInvoiceEbay
-        FILTER '{Active}' activeImportInvoiceEbay(ce) DEFAULT
+    PROPERTIES(it) TOOLBAR importInvoiceEbay
     PROPERTIES() nameEbayInvoiceType, importInvoiceEbay
 ;
 DESIGN integrationData{
