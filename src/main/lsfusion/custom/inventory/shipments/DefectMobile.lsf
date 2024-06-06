@@ -1,6 +1,6 @@
 MODULE DefectMobile;
 
-REQUIRE ReceiptMobile, ShipmentLot;
+REQUIRE ReceiptMobile, ShipmentLot, ShipmentPickingLot;
 
 NAMESPACE Inventory;
 
@@ -45,6 +45,10 @@ returnDefect 'Вернуть на склад' (Lot l) {
             product(sl) <- product(l);
             done(sl) <- onHand(minLocationOnHand(l),l);
             done(sl,l) <- onHand(minLocationOnHand(l),l);
+            
+            //
+            done(sl, prevMinLocationOnHand(l)) <- 1;
+            quantity(sl, prevMinLocationOnHand(l), l) <- 1 ;
         }
         APPLY;
         IF NOT canceled() THEN beep(successSound(), TRUE);
