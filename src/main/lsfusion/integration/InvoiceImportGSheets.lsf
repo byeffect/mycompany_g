@@ -35,8 +35,49 @@ CONSTRAINT (SET(activeImportInvoiceAmazon(Country c)) OR CHANGED( idImportInvoic
     AND activeImportInvoiceAmazon(c) AND NOT (idImportInvoiceAmazon(c) AND typeImportInvoiceAmazon(c))
     MESSAGE 'Не заполнены ID таблицы и Тип зказа';
 
-importInvoiceAmazon 'Импорт реализации с Амазон' (ImportTable t, DATE date) {
+importProducts 'Импорт товаров' (STRING idImport, STRING interval, Category category) {
     NEWSESSION {
+        getValuesRange(idImport, interval, defaultAccount());
+        valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', '";');
+        LOCAL str = STRING();
+        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        stringToFile(str());
+
+        LOCAL amzModel = STRING(INTEGER);
+        LOCAL baseModel = STRING(INTEGER);
+
+        IMPORT CSV ';' NOHEADER FROM resultFile() TO amzModel, baseModel;
+
+        LOCAL item = Item (INTEGER);
+        item(INTEGER i) <- productModel(baseModel(i));
+
+        FOR [GROUP MAX INTEGER i BY baseModel(i)](STRING[100] id) AND NOT model(id) NEW m = Model DO{
+            id(m) <- id;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY baseModel(i)](STRING id) AND Model m = model(id) AND NOT productModel(id) NEW p = Product DO{
+            product(m) <- p;
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i BY baseModel(i)](STRING id) AND Product p = productModel(id) AND NOT item(x) DO{
+            dataName(p) <- ISTRING[200](baseModel(x));
+            category(p) <- category;
+        }
+
+        APPLY;
+    }
+}
+
+categoryByName (STRING name) = GROUP MIN Category c BY name(c);
+
+importProductsAmazon 'Импорт товаров с Амазон' (ImportTable t){
+    importProducts(idTable(t), 'SKU!A2:B', categoryByName('Телефоны'));
+    importProducts(idTable(t), 'SKU!D2:E', categoryByName('Здоровье'));
+    importProducts(idTable(t), 'SKU!G2:H', categoryByName('Аксессуары'));
+}
+
+importInvoiceAmazon 'Импорт реализации с Амазон' (ImportTable t, DATE date, BOOLEAN skipImportProducts) {
+    NEWSESSION {
+        IF NOT skipImportProducts THEN  importProductsAmazon(t);
+
         getValuesRange(idTable(t), 'SKU!A2:B', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', '";');
         LOCAL str = STRING();
@@ -239,6 +280,10 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (ImportT
     } 
 }
 
+importInvoiceAmazon 'Импорт реализации с Амазон' (ImportTable t, DATE date){
+    importInvoiceAmazon(t, date, NULL);
+}
+
 importInvoiceAmazon 'Импорт реализации с Амазон' (ImportTable t) {
     DIALOG dialogDate OBJECTS d INPUT DO {
         IF marketplace(t) = Marketplace.amazon THEN importInvoiceAmazon(t, d);
@@ -257,6 +302,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' () {
 EXTEND FORM integrationData
     OBJECTS it = ImportTable
     PROPERTIES (it) nameMarketplace, nameCountry, nameEStore, idTable, typeOrder, active
+    PROPERTIES(it) TOOLBAR importInvoiceAmazon
     PROPERTIES (it) NEW, EDIT, DELETE
     PROPERTIES() nameAmazonInvoiceType, importInvoiceAmazon
 ;
@@ -325,9 +371,17 @@ typeImportInvoiceEbay 'Тип зказа' = DATA STRING (Country) CHARWIDTH 20;
 
 CONSTRAINT (SET(activeImportInvoiceEbay(Country c)) OR CHANGED( idImportInvoiceEbay(c)) OR CHANGED(typeImportInvoiceEbay(c)))
     AND activeImportInvoiceEbay(c) AND NOT (idImportInvoiceEbay(c) AND typeImportInvoiceEbay(c))
-    MESSAGE 'Не заполнены ID таблицы и Тип зказа';
+    MESSAGE 'Не заполнены ID таблицы и Тип заказа';
 
-importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DATE date) {
+importProductsEbay 'Импорт товаров с eBay' (ImportTable t){
+    importProducts(idTable(t), 'SKU!A2:B', categoryByName('Телефоны'));
+    importProducts(idTable(t), 'SKU!D2:E', categoryByName('Здоровье'));
+    importProducts(idTable(t), 'SKU!G2:H', categoryByName('Аксессуары'));
+}
+
+importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DATE date, BOOLEAN skipImportProducts) {
+    IF NOT skipImportProducts THEN  importProductsEbay(t);
+
     NEWSESSION {
         getValuesRange(idTable(t), 'SKU!A2:B', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', '";');
@@ -361,7 +415,7 @@ importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DA
         LOCAL item = Item(INTEGER);
         LOCAL index = INTEGER(INTEGER);
 
-        getValuesRange(idTable(t), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A9:AH', defaultAccount());
+        getValuesRange(idTable(t), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A2:AH', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
         stringToFile(str());
@@ -446,6 +500,10 @@ importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DA
     }
 }
 
+importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DATE date) {
+    importInvoiceEbay(t, date, NULL);
+}
+
 importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t) {
     DIALOG dialogDate OBJECTS d INPUT DO {
         IF marketplace(t) = Marketplace.ebay THEN importInvoiceEbay(t, d);
@@ -511,5 +569,20 @@ onStarted() + {
     IF NOT (GROUP MAX CustomSalesAccount aa IF id(aa) == 'other_fees') THEN NEW a = CustomSalesAccount {
         id(a) <- 'other_fees';
         name(a) <- 'Другая плата';
+    }
+}
+
+onStarted()+{
+    IF NOT categoryByName('Телефоны') THEN NEW cc = Category{
+        name(cc) <- 'Телефоны';
+        parent(cc) <- GROUP MIN Category c IF name(c) == 'Все';
+    }
+    IF NOT categoryByName('Здоровье') THEN NEW cc = Category{
+        name(cc) <- 'Здоровье';
+        parent(cc) <- GROUP MIN Category c IF name(c) == 'Все';
+    }
+    IF NOT categoryByName('Аксессуары') THEN NEW cc = Category{
+        name(cc) <- 'Аксессуары';
+        parent(cc) <- GROUP MIN Category c IF name(c) == 'Все';
     }
 }
