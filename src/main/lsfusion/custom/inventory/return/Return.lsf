@@ -1,6 +1,6 @@
 MODULE Return;
 
-REQUIRE InventoryReportLotCustom, InventoryCustom, LotCustom;
+REQUIRE InventoryReportLotCustom, InventoryCustom, LotCustom, ReceiptSupplierReturn;
 
 NAMESPACE Return;
 
@@ -8,6 +8,7 @@ CLASS ABSTRACT Return 'Возврат';
 
 type 'Тип'= ABSTRACT CASE STRING (Return);
 dateTime 'Дата и время' = DATA DATETIME (Return);
+date 'Дата' (Return r) = DATE(dateTime(r));
 dateTimeCompleted 'Дата и время окончания' = DATA DATETIME (Return);
 user = DATA CustomUser (Return);
 nameUser 'Пользователь' (Return r) = name(user(r));
@@ -20,6 +21,19 @@ idDefaultModel 'SKU(по партии)' (Return r) = idDefaultModel(product(r));
 dataSku 'SKU' = DATA Product (Return);
 idDataSku 'SKU' (Return r)= idDefaultModel(dataSku(r));
 sku 'SKU' (Return r) = OVERRIDE idDataSku(r), idDefaultModel(product(r));
+undefined  = item('undefined');
+
+onStarted()+{
+    IF NOT item('undefined') THEN NEW p = Product{
+        id(p) <- 'undefined';
+        dataName(p) <- 'undefined';
+        category(p) <- GROUP MAX Category c IF c IS Category AND NOT parent(c);
+    }
+    IF NOT model('undefined') THEN NEW m = Model{
+        id(m) <- 'undefined';
+        product(m) <- item('undefined');
+    }
+}
 
 CLASS ReturnFBM 'Возврат FBM' : Return;
 
@@ -55,7 +69,42 @@ colorStatus(ReturnFBM r) = CASE
     WHEN status(r) = Status.check THEN RGB(51, 255, 51)
     WHEN status(r) = Status.return THEN RGB(153, 255, 153)
 ;
-    
+
+returnProccess(Lot lot){
+    IF NOT returnLocaltion(vendor(lot)) THEN {
+        beep(warningSound(), TRUE);
+        MESSAGE 'Не задано место хранения возвратов у поставщика';
+        RETURN;
+    }
+    IF GROUP SUM 1 IF done(ReceiptLine l, lot) AND executionDate(l) = currentDate() THEN {
+        beep(warningSound(), TRUE);
+        MESSAGE 'Код партии уже был принят';
+        RETURN;
+    }
+
+    NEWSESSION {
+        IF NOT receipt(returnLocaltion(vendor(lot)), receiptType('returnSupplier'), currentDate()) THEN NEW r = Receipt {
+            executionDateTime(r) <- currentDateTime();
+            type(r) <- receiptType('returnSupplier');
+            location(r) <- returnLocaltion(vendor(lot));
+            done(r) <- TRUE;
+            receiptLine(r) <- TRUE;
+        }
+        NEW l = ReceiptLine {
+            receipt(l) <- receipt(returnLocaltion(vendor(lot)), receiptType('returnSupplier'), currentDate());
+            product(l) <- product(lot);
+            done(l) <- 1;
+            done(l, lot) <- 1;
+        }
+        APPLY;
+        IF NOT canceled() THEN beep(successSound(), TRUE);
+    }
+}
+returnProccess(Return r){
+    IF lot(r) THEN returnProccess(lot(r));
+    IF NOT sku(r) THEN dataSku(r) <- item('undefined');
+}
+
 FORM printReturnFBM
     OBJECTS r = ReturnFBM
     PROPERTIES (r) sku, idProblem, nameVendor, plentyOrder, externalOrder, idLot
@@ -64,6 +113,7 @@ print 'Печать' ABSTRACT LIST (Return);
 
 creareReturnWithoutLot 'Нет IMEI'(){
 }
+
 print (ReturnFBM r) +{
     IF r IS ReturnFBM THEN PRINT printReturnFBM OBJECTS r = r PDF;
 }
@@ -74,6 +124,7 @@ printReturns 'Печать'(){
 }
 complete 'Готово' (Return r) {
     dateTimeCompleted(r) <- currentDateTime();
+    returnProccess(r);
     APPLY NESTED LOCAL;
 }
 
@@ -212,14 +263,64 @@ DESIGN dashboardReturnFBA{
     }
 }
 
+rPeriod 'Период' = DATA LOCAL INTERVAL[DATE] ();
+rFrom = from(rPeriod());
+rTo = to(rPeriod());
+
+@defineStaticObject(typeReturn, 'Тип возврата');
+EXTEND CLASS TypeReturn{
+    fba 'FBA',
+    fbm 'FBM'
+}
+rType = DATA LOCAL TypeReturn ();
+
+rNameType 'Тип возврата' = name(rType());
+
+filterType (Return r) = (rNameType() = type(r)) OR NOT rType();
+
+filtered (Return r) = (date(r) >= rFrom() AND date(r) <= rTo()) AND filterType(r);
+quantity 'Принято' (STRING s) = GROUP SUM 1 IF filtered(Return r) BY sku(r);
+
 
 FORM returnsList 'Возвраты'
+    PROPERTIES rPeriod(), rNameType()
+    
     OBJECTS r = Return FIRST
-    PROPERTIES (r) READONLY  BACKGROUND colorStatus(r) type, dateTime ORDER DESC, dateTimeCompleted,  nameUser, idLot, idDefaultModel, print TOOLBAR DRAW r CHANGEABLE 
-
+    PROPERTIES (r) READONLY  BACKGROUND colorStatus(r) type, dateTime ORDER DESC, dateTimeCompleted,  nameUser, idLot, idDefaultModel, sku, print TOOLBAR DRAW r CHANGEABLE 
+    FILTERS filtered(r)
+    
+    OBJECTS s = STRING 
+    PROPERTIES 'SKU' = VALUE(s), quantity(s)
+    FILTERS quantity(s)
+    
     LIST Return OBJECT r
 ;
 
+
+DESIGN returnsList{
+    OBJECTS {
+        NEW filters{
+            caption = 'Фильтры';
+            horizontal = TRUE;
+            MOVE PROPERTY (rPeriod());
+            MOVE PROPERTY (rNameType());
+        }
+        NEW details{
+            fill = 3;
+            alignment = STRETCH ;
+            tabbed = TRUE;
+            NEW returns{
+                caption = 'Возвраты';
+                MOVE BOX(r);
+            }
+            NEW sku{
+                caption = 'По SKU';
+                MOVE BOX (s);
+            }
+        }
+        
+    }
+}
 NAVIGATOR {
     stock{
         NEW FOLDER returns 'Учет возвратов'{
