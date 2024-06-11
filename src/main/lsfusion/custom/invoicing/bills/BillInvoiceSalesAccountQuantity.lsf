@@ -52,27 +52,14 @@ matchBillInvoice (DATE d) {
 amount (BillLine bl, InvoiceLine il) += NUMERIC[16,4](quantity(bl, il) * price(bl));
 
 EXTEND FORM bill
-    PROPERTIES(sbl) READONLY matchedQuantity
     PROPERTIES(sbl) DISABLEIF NOT salesAccount(b) match GRID
     PROPERTIES(b) DISABLEIF NOT salesAccount(b) match DRAW sbl TOOLBAR
     
-    OBJECTS qil = InvoiceLine
-    PROPERTIES(qil) READONLY date, number, index, nameItem, quantity, matchedQuantity, price, untaxedAmount
-    PROPERTIES quantity(sbl, qil), amount(sbl, qil)
-    PROPERTIES(qil) EDIT
+    PROPERTIES(sil) READONLY matchedQuantity
+    PROPERTIES quantity(sbl, sil)
     
-    FILTERS matchQuantity(sbl, qil) 
-    
-    FILTERGROUP matchedInvoice
-        FILTER 'Matched' quantity(sbl, qil) DEFAULT
+    FILTERS matchQuantity(sbl, sil) 
 ;
-
-DESIGN bill {
-    salesAccountPane {
-        horizontal = TRUE;
-        MOVE BOX(qil);
-    }
-}
 
 EXTEND FORM bills
     PROPERTIES(b) READONLY leftLines

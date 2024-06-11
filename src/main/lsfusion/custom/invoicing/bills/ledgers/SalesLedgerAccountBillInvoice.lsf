@@ -16,7 +16,22 @@ WHEN CHANGED(calcAmount(InvoiceLine il, CustomSalesAccount sa)) DO
 
 EXTEND FORM bill
     PROPERTIES(sbl) READONLY salesAmount
-    
+
     FILTERGROUP matchedBill
         FILTER 'Не разнесено' salesAmount(sbl)
+
+    OBJECTS sil = InvoiceLine
+    PROPERTIES(sil) READONLY date, number, index, nameItem, quantity, price, untaxedAmount
+    PROPERTIES READONLY amount(sbl, sil)
+    PROPERTIES(sil) EDIT
+    
+    FILTERGROUP matchedInvoice
+        FILTER 'Matched' amount(sbl, sil) DEFAULT
 ;
+
+DESIGN bill {
+    salesAccountPane {
+        horizontal = TRUE;
+        MOVE BOX(sil);
+    }
+}
