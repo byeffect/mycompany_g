@@ -34,7 +34,8 @@ REQUIRE Eval, ProcessMonitor, Backup,
         AdjustmentDashboardMobile, LotMobile, ScanDashboardMobile,
 
         InvoiceShipment, SalesLedgerInvoiceShipment, SalesLedgerAccountInvoice,
-        SalesLedgerReport, SalesLedgerAccountReport, InvoiceImportGSheets, SalesLedgerAccountReportCustom, 
+        SalesLedgerReport, SalesLedgerAccountReport, InvoiceImportGSheets, SalesLedgerAccountReportCustom,
+        BillInvoiceSalesAccountQuantity,
 
         ReceiptPlan, Return,
         InvLedgerCustom, DefectMobile,

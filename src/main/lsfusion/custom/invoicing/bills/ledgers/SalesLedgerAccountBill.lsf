@@ -1,0 +1,33 @@
+MODULE SalesLedgerAccountBill;
+
+REQUIRE BillReady, SalesLedgerAccountInvoice, SalesAccount;
+
+NAMESPACE Invoicing;
+
+salesAccount = DATA CustomSalesAccount (Bill);
+nameSalesAccount 'Sales account' (Bill b) = name(salesAccount(b));
+
+salesAccount (BillLine l) = salesAccount(bill(l)) MATERIALIZED;
+
+amount = ABSTRACT VALUE NUMERIC[16,4] (BillLine, InvoiceLine);
+
+calcAmount (InvoiceLine il, CustomSalesAccount sa) = GROUP SUM amount(BillLine bl, il) IF salesAccount(bl) = sa AND ready(bill(bl));
+
+WHEN CHANGED(calcAmount(InvoiceLine il, CustomSalesAccount sa)) DO
+    dataAmount(il, sa) <- NUMERIC[14,2](calcAmount(il, sa));
+
+EXTEND FORM bill
+    PROPERTIES(b) nameSalesAccount
+;
+
+DESIGN bill {
+    details {
+        NEW salesAccount {
+            showIf = ready(b);
+            caption = 'Разнесение по реализации';
+            NEW salesAccountHeader {
+                MOVE PROPERTY(nameSalesAccount(b));
+            }
+        }
+    }
+}
