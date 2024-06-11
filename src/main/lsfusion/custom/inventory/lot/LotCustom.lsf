@@ -108,6 +108,18 @@ DESIGN category {
     }
 }
 
+skipCheckLot 'Не проверять партии' = DATA BOOLEAN (Location);
+
+EXTEND FORM location
+    PROPERTIES (l) skipCheckLot
+;
+
+DESIGN location{
+    params{
+        MOVE PROPERTY (skipCheckLot(l));
+    }
+}
+
 checkLot (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLot(c) MATERIALIZED;
 checkLocation (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLocation(c) MATERIALIZED;
 checkLotLocation (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLotLocation(c) MATERIALIZED;
@@ -121,5 +133,5 @@ CONSTRAINT SET(onHand(Lot l) < 0) AND checkLotNegative(product(l))
     MESSAGE 'Запрещено иметь остаток по партии меньше 0';
 
 checkLotOnHand (Product p) = GROUP SUM 1 IF level(category(p), Category c) AND checkLotOnHand(c) MATERIALIZED;
-CONSTRAINT SET(onHand(Location l, Product p) (-) onHandLot(l, p)) AND checkLotOnHand(p)
+CONSTRAINT SET(onHand(Location l, Product p) (-) onHandLot(l, p)) AND checkLotOnHand(p) AND NOT skipCheckLot(l)
     MESSAGE 'Остаток по товару не совпадает с остатком по партии'; 

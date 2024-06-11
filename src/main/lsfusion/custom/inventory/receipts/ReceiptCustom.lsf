@@ -35,11 +35,11 @@ EXTEND FORM receiptType
 
 WHEN (SETCHANGED(type(Receipt r)) OR CHANGED(vendor(r))) AND defaultVendor(type(r)) AND NOT vendor(r) DO vendor(r) <- defaultVendor(type(r));
 
-CONSTRAINT SET(done(ReceiptLine l) (-) doneLot(l)) AND checkLot(product(l))
+CONSTRAINT SET(done(ReceiptLine l) (-) doneLot(l)) AND checkLot(product(l)) AND NOT skipCheckLot(location(receipt(l)))
     MESSAGE 'Количество принятых партий в приходе не соответствует принятому количеству';
 
-CONSTRAINT SET(done(ReceiptLine l) (-) put(l)) AND checkLocation(product(l))
+CONSTRAINT SET(done(ReceiptLine l) (-) put(l)) AND checkLocation(product(l)) AND NOT skipCheckLot(location(receipt(l)))
     MESSAGE 'Количество размещенных товаров не соответствует принятому количеству';
 
-CONSTRAINT SET(done(ReceiptLine l) (-) putLot(l)) AND checkLotLocation(product(l))
+CONSTRAINT SET(done(ReceiptLine l) (-) putLot(l)) AND checkLotLocation(product(l)) AND NOT skipCheckLot(location(receipt(l)))
     MESSAGE 'Количество размещенных партий не соответствует принятому количеству'; 

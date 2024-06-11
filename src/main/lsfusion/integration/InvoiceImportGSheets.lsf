@@ -51,17 +51,21 @@ importProducts 'Импорт товаров' (STRING idImport, STRING interval, 
         LOCAL item = Item (INTEGER);
         item(INTEGER i) <- productModel(baseModel(i));
 
+        FOR [GROUP MAX INTEGER i BY amzModel(i)](STRING[100] id) AND NOT model(id) NEW m = Model DO{
+            id(m) <- id;
+        }
         FOR [GROUP MAX INTEGER i BY baseModel(i)](STRING[100] id) AND NOT model(id) NEW m = Model DO{
             id(m) <- id;
         }
         FOR INTEGER x = [GROUP MAX INTEGER i BY baseModel(i)](STRING id) AND Model m = model(id) AND NOT productModel(id) NEW p = Product DO{
             product(m) <- p;
-        }
-        FOR INTEGER x = [GROUP MAX INTEGER i BY baseModel(i)](STRING id) AND Product p = productModel(id) AND NOT item(x) DO{
             dataName(p) <- ISTRING[200](baseModel(x));
             category(p) <- category;
         }
-
+        FOR INTEGER x = [GROUP MAX INTEGER i BY amzModel(i)](STRING[100] id) AND Model m = model(id) AND Product p = productModel(baseModel(x)) DO{
+            product(m) <- p;
+        }
+        
         APPLY;
     }
 }
@@ -78,18 +82,9 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (ImportT
     NEWSESSION {
         IF NOT skipImportProducts THEN  importProductsAmazon(t);
 
-        getValuesRange(idTable(t), 'SKU!A2:B', defaultAccount());
-        valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', '";');
         LOCAL str = STRING();
-        str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
-        stringToFile(str());
 
-        LOCAL amzModel = STRING(INTEGER);
-        LOCAL baseModel = STRING(INTEGER);
-        
-        IMPORT CSV ';' NOHEADER FROM resultFile() TO amzModel, baseModel;
-        
-        LOCAL dateTime = DATETIME(INTEGER);
+        LOCAL dateTime = STRING (INTEGER);
         LOCAL type = STRING(INTEGER);
         LOCAL reference = STRING(INTEGER);
         LOCAL model = STRING(INTEGER);
@@ -123,7 +118,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (ImportT
                                                      marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
                                                      otherTransactionFees = Y, other = Z, total = AA;
         
-        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == typeOrder(t) AND DATE(dateTime(i)) == date;
+        item(INTEGER i) <- productModel(model(i)) IF type(i) == typeOrder(t) AND toDateFormat(dateTime(i), 'MM/dd/yy') = date;
         index(INTEGER i) <- PARTITION SUM 1 ORDER i BY reference(i), item(i);
         
         IF NOT (GROUP MAX Invoice i IF date(i) == date AND type(i) == amazonInvoiceType() AND customer(i) == FBAPartner() AND eStore(i) = eStore(t) AND country(i) = country(t)) THEN NEW i = Invoice {
@@ -213,7 +208,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (ImportT
                                                              marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
                                                              otherTransactionFees = Y, other = Z, total = AA;
 
-                item(INTEGER ii) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(ii))) IF type(ii) == typeOrder(t) AND DATE(dateTime(ii)) == date;
+                item(INTEGER ii) <- productModel(model(ii)) IF type(ii) == typeOrder(t) AND toDateFormat(dateTime(i), 'MM/dd/yy') == date;
                 index(INTEGER ii) <- PARTITION SUM 1 ORDER ii BY reference(ii), item(ii);
 
                 FOR [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) NEW l = InvoiceLine DO {
@@ -302,7 +297,7 @@ importInvoiceAmazon 'Импорт реализации с Амазон' () {
 EXTEND FORM integrationData
     OBJECTS it = ImportTable
     PROPERTIES (it) nameMarketplace, nameCountry, nameEStore, idTable, typeOrder, active
-    PROPERTIES(it) TOOLBAR importInvoiceAmazon
+    PROPERTIES(it) TOOLBAR importInvoiceAmazon, importProductsAmazon
     PROPERTIES (it) NEW, EDIT, DELETE
     PROPERTIES() nameAmazonInvoiceType, importInvoiceAmazon
 ;
