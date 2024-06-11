@@ -1,14 +1,14 @@
 MODULE BillInvoiceSalesAccountQuantity;
 
-REQUIRE SalesLedgerAccountBill, BillReady, SalesLedgerAccountInvoice, InvoiceReady;
+REQUIRE SalesLedgerAccountBillInvoice, BillCanceled;
 
 NAMESPACE Invoicing;
 
 quantity 'Qty' = DATA NUMERIC[16,3] (BillLine, InvoiceLine);
 
-matchQuantity (BillLine bl, InvoiceLine sl) = item(bl) = item(sl) AND date(bl) <= date(sl) AND ready(invoice(sl));
+matchQuantity (BillLine bl, InvoiceLine sl) = item(bl) = item(sl) AND date(bl) <= date(sl) AND active(invoice(sl));
 
-matchedQuantity (InvoiceLine il, CustomSalesAccount sa) = GROUP SUM quantity(BillLine bl, il) IF salesAccount(bl) = sa AND ready(bill(bl)) MATERIALIZED;
+matchedQuantity (InvoiceLine il, CustomSalesAccount sa) = GROUP SUM quantity(BillLine bl, il) IF salesAccount(bl) = sa AND active(bill(bl)) MATERIALIZED;
 
 matchedQuantity 'Matched' (BillLine bl) = GROUP SUM quantity(bl, InvoiceLine il) MATERIALIZED;
 matchedQuantity 'Matched' (InvoiceLine il) = GROUP SUM quantity(BillLine bl, il) MATERIALIZED;
@@ -41,8 +41,8 @@ match 'Разнести' (Bill b) {
 
 matchBillInvoice (DATE d) {
     NEWSESSION {
-        quantity(BillLine bl, InvoiceLine il) <- NULL WHERE date(bl) >= d AND salesAccount(bl) AND ready(bill(bl));
-        FOR date(Bill b) >= d AND ready(b) ORDER dateTime(b), b NOINLINE DO {
+        quantity(BillLine bl, InvoiceLine il) <- NULL WHERE date(bl) >= d AND salesAccount(bl) AND active(bill(bl));
+        FOR date(Bill b) >= d AND active(b) ORDER dateTime(b), b NOINLINE DO {
             match(b);
         }
         APPLY;
@@ -52,34 +52,25 @@ matchBillInvoice (DATE d) {
 amount (BillLine bl, InvoiceLine il) += NUMERIC[16,4](quantity(bl, il) * price(bl));
 
 EXTEND FORM bill
-    OBJECTS qbl = BillLine
-    PROPERTIES(qbl) READONLY index, nameItem, quantity, matchedQuantity, price, amount
-    PROPERTIES(qbl) DISABLEIF NOT salesAccount(b) match GRID
-    PROPERTIES(b) DISABLEIF NOT salesAccount(b) match DRAW qbl TOOLBAR
-    FILTERS bill(qbl) = b
+    PROPERTIES(sbl) READONLY matchedQuantity
+    PROPERTIES(sbl) DISABLEIF NOT salesAccount(b) match GRID
+    PROPERTIES(b) DISABLEIF NOT salesAccount(b) match DRAW sbl TOOLBAR
     
-    FILTERGROUP matchedBill
-        FILTER 'Не разнесено' leftQuantity(qbl)
-
     OBJECTS qil = InvoiceLine
-    PROPERTIES(qil) READONLY date, number, index, nameItem, quantity, matchedQuantity, price, amount
-    PROPERTIES quantity(qbl, qil), amount(qbl, qil)
+    PROPERTIES(qil) READONLY date, number, index, nameItem, quantity, matchedQuantity, price, untaxedAmount
+    PROPERTIES quantity(sbl, qil), amount(sbl, qil)
     PROPERTIES(qil) EDIT
     
-    FILTERS matchQuantity(qbl, qil) 
+    FILTERS matchQuantity(sbl, qil) 
     
     FILTERGROUP matchedInvoice
-        FILTER 'Matched' quantity(qbl, qil) DEFAULT
+        FILTER 'Matched' quantity(sbl, qil) DEFAULT
 ;
 
 DESIGN bill {
-    salesAccount {
-        NEW salesAccountQuantityPane {
-            fill = 1;
-            horizontal = TRUE;
-            MOVE BOX(qbl);
-            MOVE BOX(qil);
-        }
+    salesAccountPane {
+        horizontal = TRUE;
+        MOVE BOX(qil);
     }
 }
 

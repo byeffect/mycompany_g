@@ -1,33 +1,57 @@
 MODULE SalesLedgerAccountBill;
 
-REQUIRE BillReady, SalesLedgerAccountInvoice, SalesAccount;
+REQUIRE BillReady, SalesLedgerAccount, BillCanceled;
 
 NAMESPACE Invoicing;
 
 salesAccount = DATA CustomSalesAccount (Bill);
 nameSalesAccount 'Sales account' (Bill b) = name(salesAccount(b));
 
-salesAccount (BillLine l) = salesAccount(bill(l)) MATERIALIZED;
-
-amount 'Amount' = ABSTRACT VALUE NUMERIC[16,4] (BillLine, InvoiceLine);
-
-calcAmount (InvoiceLine il, CustomSalesAccount sa) = GROUP SUM amount(BillLine bl, il) IF salesAccount(bl) = sa AND ready(bill(bl));
-
-WHEN CHANGED(calcAmount(InvoiceLine il, CustomSalesAccount sa)) DO
-    dataAmount(il, sa) <- NUMERIC[14,2](calcAmount(il, sa));
+dataSalesAccount = DATA CustomSalesAccount (BillLine);
+salesAccount (BillLine l) = OVERRIDE dataSalesAccount(l), salesAccount(bill(l)) MATERIALIZED;
+nameSalesAccount 'Sales account' (BillLine b) = name(salesAccount(b));
 
 EXTEND FORM bill
     PROPERTIES(b) nameSalesAccount
+
+    OBJECTS sbl = BillLine
+    PROPERTIES(sbl) nameSalesAccount
+    PROPERTIES(sbl) READONLY index, nameItem, quantity, price, untaxedAmount
+    FILTERS bill(sbl) = b
 ;
 
 DESIGN bill {
     details {
         NEW salesAccount {
             showIf = ready(b);
-            caption = 'Разнесение по реализации';
+            caption = 'Статьи затрат';
             NEW salesAccountHeader {
                 MOVE PROPERTY(nameSalesAccount(b));
+            }
+            NEW salesAccountPane {
+                fill = 1;
+                horizontal = TRUE;
+                MOVE BOX(sbl);
             }
         }
     }
 }
+
+excludeAmount = ABSTRACT VALUE NUMERIC[14,2] (BillLine) MATERIALIZED;
+salesAmount 'Не распределено' (BillLine bl) = untaxedAmount(bl) (-) excludeAmount(bl);
+
+CLASS BillLineSalesLedger 'Расходы по поступлению' : SalesLedger;
+salesLedger = AGGR BillLineSalesLedger WHERE salesAmount(BillLine line) > 0 AND salesAccount(line) AND active(bill(line));
+
+type(BillLineSalesLedger l) += nameType(bill(line(l)));
+
+dateTime(BillLineSalesLedger l) += dateTime(bill(line(l)));
+number(BillLineSalesLedger l) += number(bill(line(l)));
+
+item(BillLineSalesLedger l) += item(line(l));
+
+customer(BillLineSalesLedger l) += vendor(bill(line(l)));
+
+amount(BillLineSalesLedger l, CustomSalesAccount a) += -salesAmount(line(l)) IF a = salesAccount(line(l));
+
+edit (BillLineSalesLedger l) + { edit(bill(line(l))); } 

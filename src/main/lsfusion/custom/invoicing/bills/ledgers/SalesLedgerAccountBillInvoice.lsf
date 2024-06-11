@@ -1,0 +1,22 @@
+MODULE SalesLedgerAccountBillInvoice;
+
+REQUIRE SalesLedgerAccountBill, SalesLedgerAccountInvoice;
+
+NAMESPACE Invoicing;
+
+amount 'Amount' = ABSTRACT VALUE NUMERIC[16,4] (BillLine, InvoiceLine);
+
+calcAmount (BillLine bl) = GROUP SUM amount(bl, InvoiceLine il);
+excludeAmount(BillLine bl) += NUMERIC[14,2](calcAmount(bl));
+
+calcAmount (InvoiceLine il, CustomSalesAccount sa) = GROUP SUM amount(BillLine bl, il) IF salesAccount(bl) = sa AND active(bill(bl));
+
+WHEN CHANGED(calcAmount(InvoiceLine il, CustomSalesAccount sa)) DO
+    dataAmount(il, sa) <- NUMERIC[14,2](calcAmount(il, sa));
+
+EXTEND FORM bill
+    PROPERTIES(sbl) READONLY salesAmount
+    
+    FILTERGROUP matchedBill
+        FILTER 'Не разнесено' salesAmount(sbl)
+;
