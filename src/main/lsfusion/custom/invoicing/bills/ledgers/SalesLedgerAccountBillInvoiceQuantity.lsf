@@ -1,4 +1,4 @@
-MODULE BillInvoiceSalesAccountQuantity;
+MODULE SalesLedgerAccountBillInvoiceQuantity;
 
 REQUIRE SalesLedgerAccountBillInvoice, BillCanceled;
 
