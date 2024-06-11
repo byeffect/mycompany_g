@@ -1,4 +1,4 @@
-MODULE AdjustmentTaskTask;
+MODULE AdjustmentTaskCustom;
 
 REQUIRE Adjustment, AdjustmentCanceled, AdjustmentDashboardMobile, LocationProduct;
 
