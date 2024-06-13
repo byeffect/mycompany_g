@@ -20,6 +20,7 @@ htmlReceiptLine '' (ReceiptLine l) = HTML ('<div>' + (CONCAT '&nbsp;',
 FORM receiptLine 'Возврат'
     OBJECTS l = Location PANEL
     PROPERTIES(l) name SELECTOR
+    FILTERS active(l)
     
     OBJECTS rt = ReceiptType PANEL
     PROPERTIES(rt) name SELECTOR

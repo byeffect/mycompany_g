@@ -81,6 +81,7 @@ return 'Вернуть' (Adjustment a) {
 FORM adjustmentDashboard 'Инвентаризация'
     OBJECTS l = Location NULL PANEL
     PROPERTIES(l) name SELECTOR
+    FILTERS active(l)
     
     OBJECTS ss = Adjustment
     PROPERTIES(ss) READONLY BACKGROUND IF quantityScan(ss) THEN RGB(255,255,212)
