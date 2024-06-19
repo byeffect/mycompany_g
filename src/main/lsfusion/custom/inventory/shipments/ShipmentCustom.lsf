@@ -5,13 +5,13 @@ REQUIRE ShipmentPickingLot, LotCustom, ShipmentDashboardMobile;
 NAMESPACE Inventory;
 
 CONSTRAINT SET(done(ShipmentLine l) (-) doneLot(l)) AND checkLot(product(l)) AND NOT skipCheckLot(location(shipment(l)))
-    MESSAGE 'Количество принятых партий в приходе не соответствует принятому количеству';
+    MESSAGE 'Количество отгруженных партий в расходе не соответствует отгруженному количеству';
 
-CONSTRAINT SET(done(ShipmentLine l) (-) picked(l)) AND checkLocation(product(l)) AND NOT skipCheckLot(location(shipment(l)))
-    MESSAGE 'Количество размещенных товаров не соответствует принятому количеству';
+CONSTRAINT SET(done(ShipmentLine l) (-) picked(l)) AND checkLocation(product(l)) AND picking(type(shipment(l))) AND NOT skipCheckLot(location(shipment(l)))
+    MESSAGE 'Количество отгруженных товаров не соответствует отгруженному количеству';
 
-CONSTRAINT SET(done(ShipmentLine l) (-) pickedLot(l)) AND checkLotLocation(product(l)) AND NOT skipCheckLot(location(shipment(l)))
-    MESSAGE 'Количество размещенных партий не соответствует принятому количеству'; 
+CONSTRAINT SET(done(ShipmentLine l) (-) pickedLot(l)) AND checkLotLocation(product(l)) AND picking(type(shipment(l))) AND NOT skipCheckLot(location(shipment(l)))
+    MESSAGE 'Количество отгруженных партий не соответствует отгруженному количеству'; 
 
 fillShipmentLines 'Заполнить остатками' (Shipment s) {
     FOR onHand(location(s), Lot l) > 0 DO {
