@@ -1,6 +1,7 @@
 MODULE SupplierImportGsheets;
 
-REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot, ReceiptPlan, Messenger, ReceiptCost, LotCustom;
+REQUIRE ServiceAccountGoogle, ProductModel, ReceiptPackageLot, LocationProduct, ReceiptDone, ReceiptLot, ReceiptPlan, 
+        Messenger, ReceiptCost, LotCustom, SalesLedgerAccountBillInvoiceQuantity;
 
 NAMESPACE Inventory;
 
@@ -470,12 +471,88 @@ idImportReceiptPnl 'ID таблицы приемки PnL' = DATA STRING () CHARW
 chr = FORMULA TEXT 'chr($1)';
 replaceChr160 (STRING s) = replace(s, chr(160), '');
 
-importReceiptPnl 'Импорт приемки PnL' (DATE date) {
+importReceiptPnl 'Импорт приемки PnL' () {
+    //    NEWSESSION {
+    IF NOT pnlReceiptType() THEN MESSAGE 'Заполните Тип приемки PnL';
+    ELSE IF NOT pnlLocation() THEN MESSAGE 'Заполните Склад PnL';
+    ELSE IF NOT idImportReceiptPnl() THEN MESSAGE 'Заполните ID таблицы приемки PnL';
+        ELSE {
+                getValuesRange(idImportReceiptPnl(), 'Orders!A2:M', defaultAccount());
+                valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), '[', ''), ']', ''), '","', ';'), '"', '');
+                LOCAL str = STRING();
+                str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+                stringToFile(str());
+
+                LOCAL date = DATE (INTEGER);
+                LOCAL model = STRING (INTEGER);
+                LOCAL status = STRING (INTEGER);
+                LOCAL quantity = INTEGER (INTEGER);
+
+                LOCAL price = NUMERIC[10,2] (INTEGER);
+                LOCAL box = STRING (INTEGER);
+                LOCAL unit = STRING (INTEGER);
+                LOCAL unitShipment = NUMERIC[14,2] (INTEGER);
+                LOCAL shipment = NUMERIC[14,2] (INTEGER);
+                LOCAL amount = NUMERIC[14,2] (INTEGER);
+
+                LOCAL sum = STRING (INTEGER);
+                LOCAL batch = INTEGER (INTEGER);
+                LOCAL vendor = STRING (INTEGER);
+
+                IMPORT CSV ';' NOHEADER FROM resultFile() TO date, model, status, quantity, price, box, unit, unitShipment, shipment, amount, sum, batch, vendor;
+
+                LOCAL item = Item (INTEGER);
+                item(INTEGER i) <- productModel(model(i));
+                vendor(INTEGER i) <- replace(vendor(i), 'П', '');
+                sum(INTEGER i) <- replaceChr160(sum(i));
+
+                FOR INTEGER x = [GROUP MAX INTEGER i IF lower(status(i)) == 'new' AND item(i) BY date(i)](DATE date) NEW r = Receipt DO{
+                    scheduledDateTime(r) <- DATETIME(date);
+                    executionDateTime(r) <- DATETIME(date);
+                    type(r) <- pnlReceiptType();
+                    location(r) <- pnlLocation();
+                    vendor(r) <- partner('supplier' + vendor(GROUP MAX INTEGER i IF date(i) == date AND lower(status(i)) == 'new' AND item(i)));
+                    done(r) <- TRUE;
+
+                    FOR date(INTEGER i) == date AND lower(status(i)) == 'new' AND item(i) NEW l = ReceiptLine DO {
+                        receipt(l) <- r;
+                        product(l) <- item(i);
+                        initialDemand(l) <- quantity(i);
+                        done(l) <- quantity(i);
+                        dataCost(l) <- NUMERIC[14,2](NUMERIC[14,2](sum(i)));
+                    }
+                }
+
+                APPLY;
+            }
+}
+//    }
+
+typeRepairBill = DATA BillType () PREREAD;
+nameTypeRepairBill 'Тип поступления для ремонтов' = name(typeRepairBill());
+billRepair (DATE d) = GROUP MAX Bill b IF type(b) = typeRepairBill() BY date(b);
+accountBillRepair = DATA CustomSalesAccount ();
+nameAccountBillRepair 'Статья продажа для поступлений ремонта' = name(accountBillRepair());
+
+EXTEND FORM Invoicing.options
+    PROPERTIES nameAccountBillRepair(), nameTypeRepairBill()
+;
+DESIGN Invoicing.options{
+    tabbedPane{
+        NEW repair{
+            caption = 'Ремонты';
+            MOVE PROPERTY (nameAccountBillRepair());
+            MOVE PROPERTY (nameTypeRepairBill());
+        }
+    }
+}
+
+importBillPnl 'Импорт поступлений PnL' () {
     NEWSESSION {
         IF NOT pnlReceiptType() THEN MESSAGE 'Заполните Тип приемки PnL';
-            ELSE IF NOT pnlLocation() THEN MESSAGE 'Заполните Склад PnL';
-                ELSE IF NOT idImportReceiptPnl() THEN MESSAGE 'Заполните ID таблицы приемки PnL';
-                    ELSE {
+        ELSE IF NOT pnlLocation() THEN MESSAGE 'Заполните Склад PnL';
+        ELSE IF NOT idImportReceiptPnl() THEN MESSAGE 'Заполните ID таблицы приемки PnL';
+            ELSE {
                     getValuesRange(idImportReceiptPnl(), 'Orders!A2:M', defaultAccount());
                     valuesRows(INTEGER i) <- replace(replace(replace(replace(valuesRows(i), '[', ''), ']', ''), '","', ';'), '"', '');
                     LOCAL str = STRING();
@@ -504,37 +581,46 @@ importReceiptPnl 'Импорт приемки PnL' (DATE date) {
                     item(INTEGER i) <- productModel(model(i));
                     vendor(INTEGER i) <- replace(vendor(i), 'П', '');
                     sum(INTEGER i) <- replaceChr160(sum(i));
+                    status(INTEGER i) <- lower(status(i));
+                    
+                    FOR [GROUP MAX INTEGER j IF lower(status(j)) == 'repair' AND item(j) BY date(j)](DATE d) AND NOT billRepair(d) NEW b = Bill DO{
+                        dateTime(b) <- dateTimeToDateTime(d, TIME('23:59:59'));;
+                        type(b) <- typeRepairBill();
+                    }
+                    FOR [GROUP MAX INTEGER j IF lower(status(j)) == 'repair' AND item(j) BY date(j)](DATE d) AND Bill b = billRepair(d) DO{
+                        vendor(b) <- partner('supplier' + vendor(GROUP MAX INTEGER i IF date(i) == d AND lower(status(i)) == 'repair' AND item(i)));
+                        ready(b) <- TRUE;
+                        salesAccount(b) <- accountBillRepair();
+                        dateTime(b) <- dateTimeToDateTime(d, TIME('23:59:59'));;
 
-                    IF (GROUP SUM 1 IF date(INTEGER i) == date AND lower(status(i)) == 'new' AND item(i)) THEN NEW r = Receipt {
-                        scheduledDateTime(r) <- DATETIME(date);
-                        executionDateTime(r) <- DATETIME(date);
-                        type(r) <- pnlReceiptType();
-                        location(r) <- pnlLocation();
-                        vendor(r) <- partner('supplier' + vendor(GROUP MAX INTEGER i IF date(i) == date AND lower(status(i)) == 'new' AND item(i)));
-                        done(r) <- TRUE;
-                        
-                        FOR date(INTEGER i) == date AND lower(status(i)) == 'new' AND item(i) NEW l = ReceiptLine DO {
-                            receipt(l) <- r;
-                            product(l) <- item(i);
-                            initialDemand(l) <- quantity(i);
-                            done(l) <- quantity(i);
-                            dataCost(l) <- NUMERIC[14,2](NUMERIC[14,2](sum(i)));
+                        FOR date(INTEGER i) = d AND lower(status(i)) == 'repair' AND item(i) NEW l = BillLine DO {
+                            bill(l) <- b;
+                            item(l) <- item(i);
+                            quantity(l) <- quantity(i);
+                            price(l) <- NUMERIC[10,2](sum(i)) / NUMERIC[10,2](quantity(l));
+                            untaxedAmount(l) <- NUMERIC[14,2](sum(i));
+                            IF status(i) = 'repair' THEN{
+                                
+                            }
                         }
                     }
-
                     APPLY;
                 }
+        }   
+}
+
+onStarted()+{
+    IF NOT billType('repairPL') THEN NEW t = BillType{
+        id(t) <- 'repairPL';
+        name(t) <- 'Ремонты PL';
+        typeRepairBill() <- t;
     }
 }
+
 EXTEND FORM receipt
     PROPERTIES (l) dataCost SHOWIF type(r) = pnlReceiptType()
 ;
 
-importReceiptPnl 'Импорт приемки PnL' () {
-    DIALOG dialogDate OBJECTS d INPUT DO {
-        importReceiptPnl(d);
-    }
-}
 
 EXTEND FORM integrationData PROPERTIES namePnlReceiptType(), namePnlLocaltion(), idImportReceiptPnl(), importReceiptPnl();
 

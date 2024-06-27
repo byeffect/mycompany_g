@@ -40,7 +40,7 @@ newShipment (Invoice i) {
     NEW r = Shipment { 
         customer(r) <- customer(i);
         department(r) <- department(i);
-
+        executionDateTime(r) <- dateTime(i);
         type(r) <- shipmentType(type(i));
         location(r) <- location(i);
         

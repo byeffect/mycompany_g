@@ -1,10 +1,10 @@
 MODULE SalesLedgerAccountReportCustom;
 
-REQUIRE SalesLedgerAccountReport, ProductModel, SalesLedgerInvoiceCustom;
+REQUIRE SalesLedgerAccountReport, ProductModel, ServiceP, SalesLedgerInvoiceCustom, ShipmentCost, InvoiceImportGSheets;
 
 NAMESPACE Sales;
 
-sku 'SKU' (SalesLedger l) = idDefaultModel(item(l));
+sku 'SKU' (SalesLedger l) = OVERRIDE idDefaultModel(item(l)), name(item(l));
 
 EXTEND FORM salesLedgerReport
     PROPERTIES sku(sl)
@@ -43,19 +43,167 @@ filtered (SalesAccount a) = GROUP SUM 1 IF cost(Product p, a) OR revenue(p, a);
 amount (SalesAccount a, DATE d) = GROUP SUM amount(SalesLedger l, a) IF filtered(l) AND numberMonth(l) = extractMonthNumber(d) AND year(l) = extractYear(d);
 filter(SalesAccount a) = GROUP SUM 1 IF amount(SalesLedger l, a) AND filtered(l);
 
+revenue (DATE d) = GROUP SUM revenue(SalesLedger l, SalesAccount a) IF filtered(l) AND NOT skip(item(l)) AND numberMonth(l) = extractMonthNumber(d) AND year(l) = extractYear(d);
+cost (DATE d) = GROUP SUM cost(SalesLedger l, SalesAccount a) IF filtered(l) AND NOT skip(item(l)) AND numberMonth(l) = extractMonthNumber(d) AND year(l) = extractYear(d);
+profit (DATE d) = revenue(d) (-) cost(d);
+
+revenueCheck (DATE d) = GROUP SUM revenue(SalesLedger l, SalesAccount a) IF filtered(l) AND a != SystemSalesAccount.cost AND numberMonth(l) = extractMonthNumber(d) AND year(l) = extractYear(d);
+costCheck (DATE d) = GROUP SUM cost(SalesLedger l, SalesAccount a) IF filtered(l) AND a != SystemSalesAccount.cost AND numberMonth(l) = extractMonthNumber(d) AND year(l) = extractYear(d);
+check (DATE d) = revenueCheck(d) (-) costCheck(d);
+
+cost 'Себестоимость(c затратами)' (SalesLedger l) = GROUP SUM cost(l, SalesAccount a);
+revenue 'Выручка' (SalesLedger l) = GROUP SUM revenue(l, SalesAccount a);
+profit 'Прибыль' (SalesLedger l) = revenue(l) (-) cost(l);
+
+costItem 'Planned cost' (SalesLedger l) = cost(item(l), date(l));
+sku(CostLedger l) = OVERRIDE idDefaultModel(product(l)), name(product(l));
+
+costLedger (SalesLedger l) = GROUP MAX OutCostLedger cl IF invoiceLine(line(cl)) = line(l) MATERIALIZED;
+quantityCostLedger '{Quantity}' (SalesLedger l) = quantity(costLedger(l));
+costedCostLedger 'Spent' (SalesLedger l) = costed(costLedger(l));
+
+
+FORM cost 'Себестоимость'
+    OBJECTS s = SalesLedger
+    PROPERTIES (s) READONLY dateTime, sku, costAmount, costItem, quantity, revenue, cost, profit, marketplace, nameEStore, nameCountry, class
+    FILTERS filtered(s)
+    FILTERGROUP cost
+        FILTER 'С себестоимостью' costAmount(s) OR item(s) IS Service DEFAULT 
+    
+    OBJECTS cl = OutCostLedger
+    PROPERTIES (cl) READONLY dateTime, type, sku, quantity, costed, price, amount
+    FILTERS invoiceLine(line(cl)) = line(s)
+    
+    OBJECTS il = InCostLedger
+    PROPERTIES (il) READONLY dateTime, type, sku, quantity, costed, price, amount
+    FILTERS  product(il) = item(s) AND location(il) = location(s)
+    FILTERGROUP il 
+        FILTER 'Spent' quantity(cl, il) OR NOT costed(cl) DEFAULT
+    
+    OBJECTS sa = SalesAccount
+    PROPERTIES READONLY name(sa), amount(s, sa)
+    FILTERS amount(s, sa)
+;
+
+DESIGN cost{
+    OBJECTS {
+        fill = 2;
+        alignment = STRETCH;
+        horizontal = TRUE;
+        MOVE BOX (s) {fill = 1;}
+        NEW details{
+            fill = 1;
+            MOVE BOX (cl) {alignment = STRETCH; }
+            MOVE BOX (il) {alignment = STRETCH; }
+            MOVE BOX (sa) {alignment = STRETCH; }
+        }
+    }
+}
+
+CLASS ABSTRACT Metric 'Метрика';
+
+name 'Наименование' = ABSTRACT STRING (Metric);
+measure 'Показатель' = ABSTRACT NUMERIC[14,2](Metric, DATE);
+order = ABSTRACT INTEGER (Metric);
+filter = ABSTRACT CASE BOOLEAN (Metric, SalesLedger);
+
+CLASS CustomMetric {
+    sales 'Продажа',
+    salesQty 'Продажа, кол-во',
+    return 'Возврат',
+    returnQty 'Возврат, кол-во'
+} : Metric;
+
+name (CustomMetric m) += STRING(staticCaption(m));
+
+customMeasure = ABSTRACT CASE NUMERIC[14,2] (CustomMetric, DATE);
+measure (CustomMetric m, DATE d) += customMeasure(m, d);
+order (CustomMetric m) += CASE 
+    WHEN m = CustomMetric.sales THEN 1
+    WHEN m = CustomMetric.salesQty THEN 2
+    WHEN m = CustomMetric.return THEN 3
+    WHEN m = CustomMetric.returnQty THEN 4
+;
+filter(CustomMetric m, SalesLedger l) += WHEN (m = CustomMetric.sales OR m = CustomMetric.salesQty) AND quantity(l) > 0 AND item(l) IS Product THEN TRUE;
+filter(CustomMetric m, SalesLedger l) += WHEN (m = CustomMetric.return OR m = CustomMetric.returnQty) AND quantity(l) < 0 AND item(l) IS Product THEN TRUE;
+
+filtered (SalesLedger l, DATE d) = filtered(l) AND numberMonth(l) = extractMonthNumber(d) AND year(l) = extractYear(d);
+
+customMeasure (CustomMetric m, DATE d) += WHEN m = CustomMetric.sales AND d IS DATE THEN 
+    GROUP SUM amount(SalesLedger l, SalesAccount a) IF quantity(l) > 0 AND item(l) IS Product AND NOT skip(item(l)) AND filtered(l, d);
+customMeasure (CustomMetric m, DATE d) += WHEN m = CustomMetric.salesQty AND d IS DATE THEN
+    NUMERIC[14,2](GROUP SUM quantity(SalesLedger l) IF quantity(l) > 0 AND item(l) IS Product AND NOT skip(item(l)) AND filtered(l, d));
+
+customMeasure (CustomMetric m, DATE d) += WHEN m = CustomMetric.return AND d IS DATE THEN
+    GROUP SUM amount(SalesLedger l, SalesAccount a) IF quantity(l) < 0 AND NOT skip(item(l)) AND filtered(l, d);
+customMeasure (CustomMetric m, DATE d) += WHEN m = CustomMetric.returnQty AND d IS DATE THEN
+    NUMERIC[14,2](GROUP SUM quantity(SalesLedger l) IF quantity(l) < 0 AND NOT skip(item(l)) AND filtered(l,d));
+
+EXTEND CLASS SalesAccount : Metric;
+name (SalesAccount a) += STRING(name(a));
+measure(SalesAccount a, DATE d) += amount(a, d);
+order(SalesAccount a) += 5;
+filter(SalesAccount a, SalesLedger l) += WHEN amount(l, a) THEN TRUE;
+
+EXTEND CLASS Service : Metric;
+name(Service s) += STRING(dataName(s));
+filteredService (SalesLedger l) = (date(l) >= plFrom() AND date(l) <= plTo()) AND item(l) IS Service
+    AND (marketplace(l) = plMarketplace() OR NOT plMarketplace()) AND (country(l) = plCountry() OR NOT plCountry())
+    AND (eStore(l) = plEStore() OR NOT plEStore())
+;
+measureService (Service s, DATE d) = GROUP SUM amount(SalesLedger l, SalesAccount a) IF filteredService(l) AND item(l) = s AND 
+    numberMonth(l) = extractMonthNumber(d) AND year(l) = extractYear(d);
+measure (Service s, DATE d) +=  measureService(s, d);
+order(Service s) += 6;
+
+filter(Metric m) = GROUP SUM 1 IF measure(m, DATE d) AND iterate(d, plFrom(), plTo()) AND d = firstDayOfMonth(d);
+
+filter(Metric s, SalesLedger l) += WHEN item(l) = s AND s IS Service THEN TRUE;
+
+//pl
+CLASS PLMetric {
+    revenue 'Выручка',
+    cost 'Затраты',
+    check 'CHECK',
+    profit 'Прибыль'
+} : Metric;
+
+name (PLMetric m) += STRING(staticCaption(m));
+plMeasure (PLMetric m, DATE d) = CASE
+         WHEN m = PLMetric.revenue AND d IS DATE THEN revenue(d) 
+         WHEN m = PLMetric.cost AND d IS DATE THEN cost(d)
+         WHEN m = PLMetric.profit AND d IS DATE THEN profit(d)
+         WHEN m = PLMetric.check AND d IS DATE THEN check(d)
+;
+measure(PLMetric m, DATE d) += plMeasure(m, d);
+
+order(PLMetric m) += CASE 
+    WHEN m = PLMetric.revenue THEN 10
+    WHEN m = PLMetric.cost THEN 11
+    WHEN m = PLMetric.profit THEN 12
+    WHEN m = PLMetric.check THEN 13
+;
+filter(PLMetric m, SalesLedger l) += WHEN m IS PLMetric AND l IS SalesLedger THEN TRUE;
+
+showDetails 'Подробнее' (Metric m, DATE d){
+    SHOW cost FILTERS date(s) >= firstDayOfMonth(d) AND date(s) <= lastDayOfMonth(d) AND filter(m, s);
+}
+
 FORM reportPL 'Отчет PL'
     PROPERTIES() plPeriod, namePlMarketplace, namePlEStore, namePlCategory, namePlCountry
 
     OBJECTS s = Product, sll = SalesLedger, sa = SalesAccount
-    PROPERTIES (s) 'Направление' = level2, idDefaultModel, revenue, cost
+    PROPERTIES 'Направление' = level2(s), 'SKU' = (OVERRIDE idDefaultModel(s), name(s)), revenue(s), cost(s)
     PROPERTIES (s, sa) amount COLUMNS (sa) HEADER (name(sa))
-    PROPERTIES profit 'Прибыль' = revenue(s) (-) cost(s) * (IF cost(s) > revenue(s) THEN -1 ELSE 1 )
+    PROPERTIES profit 'Прибыль' = revenue(s) (-) cost(s)
     FILTERS revenue(s) OR cost(s)
     FILTERS filtered(sa)
     
-    OBJECTS a = SalesAccount, d = DATE
-    PROPERTIES name(a), amount(a, d) COLUMNS (d) HEADER (extractMonthName(d) + ' ' + extractYear(d))
+    OBJECTS a = Metric, d = DATE
+    PROPERTIES READONLY name(a), measure(a, d) COLUMNS (d) HEADER (extractMonthName(d) + ' ' + extractYear(d))
+        ON CONTEXTMENU showDetails(a, d), order(a) SHOWIF NULL
     FILTERS iterate(d, plFrom(), plTo()) AND d = firstDayOfMonth(d) 
+    ORDERS order(a)
     FILTERS filter(a)
 ;
 
@@ -74,9 +222,9 @@ DESIGN reportPL{
             tabbed = TRUE;
             alignment = STRETCH;
             fill = 3;
-            NEW account{
-                caption = 'Статьи затрат';
-                MOVE BOX (a); 
+            NEW metrics{
+                caption = 'Основные метрики';
+                MOVE BOX (a);
             }
             NEW sku{
                 caption = 'SKU';
@@ -85,11 +233,59 @@ DESIGN reportPL{
         }
     }
 }
+//
+
+needCosted 'Не расписано' (Item i) = GROUP SUM (quantity(SalesLedger l) (-) cost(l)) IF filtered(l) AND location(l) = pnlLocation() BY item(l);
+
+FORM reportErrorPL 'Отчет ошибок PL'
+    PROPERTIES() plPeriod, namePlMarketplace, namePlEStore, namePlCategory, namePlCountry
+
+    OBJECTS s = SalesLedger
+    PROPERTIES (s) READONLY dateTime, sku, costAmount, costItem, quantity, revenue, cost, profit, nameMarketplace, nameEStore, nameCountry,
+        quantityCostLedger, costedCostLedger
+    FILTERGROUP default
+        FILTER 'Без себестоимости' NOT costAmount(s) 
+        FILTER 'Не расходованно' quantityCostLedger(s) != costedCostLedger(s) OR NOT costedCostLedger(s)
+    FILTERS (NOT costAmount(s) OR quantityCostLedger(s) != costedCostLedger(s))AND NOT item(s) IS Service,
+        location(s) = pnlLocation(), filtered(s)
+
+    OBJECTS i = Product
+    PROPERTIES READONLY idDefaultModel(i), needCosted(i) 
+    FILTERS needCosted(i) 
+;
+
+DESIGN reportErrorPL{
+    OBJECTS {
+        NEW filter{
+            horizontal = TRUE;
+            MOVE PROPERTY (plPeriod()) {charWidth = 25; valueAlignment = CENTER; };
+            MOVE PROPERTY (namePlCategory());
+            MOVE PROPERTY (namePlCountry());
+            MOVE PROPERTY (namePlMarketplace());
+            MOVE PROPERTY (namePlEStore());
+        }
+        NEW report{
+            tabbed = TRUE;
+            alignment = STRETCH;
+            fill = 3;
+            NEW sku{
+                caption = 'SKU';
+                MOVE BOX (i);
+            }
+            NEW ledgers{
+                caption = 'Строки';
+                MOVE BOX (s);
+            }
+        }
+    }
+}
+
 
 NAVIGATOR {
     sales{
         reporting{
-             NEW reportPL;
+            NEW reportPL;
+            NEW reportErrorPL;
         }
     }
 }

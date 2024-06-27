@@ -1,6 +1,6 @@
 MODULE InvoiceImportGSheets;
 
-REQUIRE ShipmentImportGSheets, InvoiceShipment, SalesLedgerInvoiceCustom, SalesLedgerAccountInvoice;
+REQUIRE ShipmentImportGSheets, InvoiceShipment, SalesLedgerInvoiceCustom, SalesLedgerAccountInvoice, ServiceP;
 
 NAMESPACE Invoicing;
 CLASS ImportTable 'Таблица для импорта';
@@ -16,8 +16,9 @@ marketplace = DATA Marketplace (ImportTable);
 nameMarketplace 'Площадка' (ImportTable t) = name(marketplace(t));
 idTable 'ID таблицы' = DATA STRING (ImportTable) CHARWIDTH 40;
 typeOrder 'Тип зказа' = DATA STRING (ImportTable) CHARWIDTH 20;
+typeReturn  'Тип возврата' = DATA STRING (ImportTable) CHARWIDTH 20;
 
-customerReference '{Customer_reference}' = DATA STRING[30] (InvoiceLine) INDEXED;
+customerReference '{Customer_reference}' = DATA STRING[50] (InvoiceLine) INDEXED;
 
 EXTEND FORM invoice
     PROPERTIES(l) READONLYIF readonly(i) customerReference
@@ -26,14 +27,32 @@ EXTEND FORM invoice
 amazonInvoiceType = DATA InvoiceType ();
 nameAmazonInvoiceType 'Тип реализации для Амазон' = name(amazonInvoiceType());
 
-//импорт реализации с Амазон
-activeImportInvoiceAmazon '{Active}' = DATA BOOLEAN (Country);
-idImportInvoiceAmazon 'ID таблицы' = DATA STRING (Country) CHARWIDTH 40;
-typeImportInvoiceAmazon 'Тип зказа' = DATA STRING (Country) CHARWIDTH 20;
 
-CONSTRAINT (SET(activeImportInvoiceAmazon(Country c)) OR CHANGED( idImportInvoiceAmazon(c)) OR CHANGED(typeImportInvoiceAmazon(c)))
-    AND activeImportInvoiceAmazon(c) AND NOT (idImportInvoiceAmazon(c) AND typeImportInvoiceAmazon(c))
-    MESSAGE 'Не заполнены ID таблицы и Тип зказа';
+CLASS OtherAccount 'Прочие затраты' : CustomSalesAccount;
+item = DATA Item (OtherAccount) NONULL;
+nameItem 'Item' (OtherAccount a) = name(item(a));
+caption = DATA STRING (OtherAccount, ImportTable);
+otherAccount (STRING s, ImportTable t) = GROUP MAX OtherAccount oa BY caption(oa, t);
+skip 'Не учитывать' = DATA BOOLEAN (OtherAccount);
+skip(Item i) = skip(GROUP MAX OtherAccount a IF item(a) = i);
+
+EXTEND FORM Sales.options
+    OBJECTS a = OtherAccount
+    PROPERTIES (a) id, name, nameItem, skip
+    PROPERTIES (a) NEW, EDIT, DELETE 
+;
+
+DESIGN Sales.options{
+    tabbedPane{
+        NEW otherAccount{
+            caption = 'Прочие затраты';
+            MOVE BOX (a) {caption = ''; }
+        }
+    }
+}
+
+
+//импорт реализации с Амазон
 
 importProducts 'Импорт товаров' (STRING idImport, STRING interval, Category category) {
     NEWSESSION {
@@ -78,18 +97,37 @@ importProductsAmazon 'Импорт товаров с Амазон' (ImportTable 
     importProducts(idTable(t), 'SKU!G2:H', categoryByName('Аксессуары'));
 }
 
+
+error 'Описание ошибки' = DATA STRING (STRING, ImportTable);
+invoice (ImportTable t, DATE d) = GROUP MAX Invoice i IF date(i) == d AND type(i) == amazonInvoiceType() AND customer(i) == FBAPartner() AND eStore(i) = eStore(t) AND country(i) = country(t);
+divideSymbol 'Разделитель' = DATA STRING[1] (Country);
+countryDivideSymbol (ImportTable t) = divideSymbol(country(t));
+dateFormat 'Формат даты' = DATA STRING (Country);
+dateFormat (ImportTable t) = dateFormat(country(t));
+
+EXTEND FORM country
+    PROPERTIES (c) divideSymbol, dateFormat
+;
+parseSum (STRING s, ImportTable t) = NUMERIC[14,2](replace((IF countryDivideSymbol(t) != '.'  OR NOT countryDivideSymbol(t) THEN replace(s, '.', '') ELSE s), ' ', ''));
+parseSum2 (STRING s, ImportTable t) = NUMERIC[14,2](replace((IF countryDivideSymbol(t) != '.'  OR NOT countryDivideSymbol(t) THEN replace(s, '.', '') ELSE s), '\\u202f', ''));
+
 importInvoiceAmazon 'Импорт реализации с Амазон' (ImportTable t, DATE date, BOOLEAN skipImportProducts) {
     NEWSESSION {
+        error(STRING s, t) <- NULL;
         IF NOT skipImportProducts THEN  importProductsAmazon(t);
 
         LOCAL str = STRING();
-
+        
         LOCAL dateTime = STRING (INTEGER);
+        LOCAL dateTimeExt = DATE (INTEGER);
         LOCAL type = STRING(INTEGER);
         LOCAL reference = STRING(INTEGER);
+        LOCAL referenceExt = STRING (INTEGER);
         LOCAL model = STRING(INTEGER);
         LOCAL quantity = NUMERIC[16,3](INTEGER);
+        LOCAL quantityExt = NUMERIC[16,3](INTEGER);
         LOCAL productSales = NUMERIC[14,2](INTEGER);
+        LOCAL productSalesStr = STRING(INTEGER);
         LOCAL productSalesTax = NUMERIC[14,2](INTEGER);
         LOCAL postageCredits = NUMERIC[14,2](INTEGER);
         LOCAL shippingCreditsTax = NUMERIC[14,2](INTEGER);
@@ -102,6 +140,8 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (ImportT
         LOCAL fbaFees = NUMERIC[14,2](INTEGER);
         LOCAL otherTransactionFees = NUMERIC[14,2](INTEGER);
         LOCAL other = NUMERIC[14,2](INTEGER);
+        LOCAL otherStr = STRING(INTEGER);
+        LOCAL totalStr = STRING (INTEGER);
         LOCAL total = NUMERIC[14,2](INTEGER);
         LOCAL item = Item(INTEGER);
         LOCAL index = INTEGER(INTEGER);
@@ -109,20 +149,55 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (ImportT
         getValuesRange(idTable(t), lpad(STRING(extractMonthNumber(date)),2,'0') + '!A9:AA', defaultAccount());
         valuesRows(INTEGER i) <- replace(replace(replace(replace(replace(valuesRows(i), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
+        str() <- IF countryDivideSymbol(t) != '.' OR NOT countryDivideSymbol(t) THEN replace(str(), '.', '') ELSE str();
         stringToFile(str());
         
         IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G,
-                                                     productSales = N, productSalesTax = O, postageCredits = P,
+                                                     productSalesStr = N, productSalesTax = O, postageCredits = P,
                                                      shippingCreditsTax = Q, giftWrapCredits = R, giftwrapCreditsTax = S,
                                                      promotionalRebates = T, promotionalRebatesTax = U,
                                                      marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
-                                                     otherTransactionFees = Y, other = Z, total = AA;
+                                                     otherTransactionFees = Y, otherStr = Z, totalStr = AA;
         
-        item(INTEGER i) <- productModel(model(i)) IF type(i) == typeOrder(t) AND toDateFormat(dateTime(i), 'MM/dd/yy') = date;
-        index(INTEGER i) <- PARTITION SUM 1 ORDER i BY reference(i), item(i);
+        item(INTEGER i) <- (OVERRIDE item(otherAccount(type(i), t)), productModel(model(i)));
+        dateTimeExt(INTEGER i) <- toDateFormat(dateTime(i), OVERRIDE dateFormat(t), 'MM/dd/yy');
+        dateTimeExt(INTEGER i) <- IF dateTimeExt(i) < firstDayOfMonth(date) THEN firstDayOfMonth(date) ELSE dateTimeExt(i);
         
-        IF NOT (GROUP MAX Invoice i IF date(i) == date AND type(i) == amazonInvoiceType() AND customer(i) == FBAPartner() AND eStore(i) = eStore(t) AND country(i) = country(t)) THEN NEW i = Invoice {
-            dateTime(i) <- dateTimeToDateTime(date, TIME('23:59:59'));
+        FOR INTEGER x = [GROUP MAX INTEGER i IF model(i) AND NOT item(i) BY dateTime(i)](STRING dt) DO{
+            error(type(x) + ' : ' + dt, t) <- CONCAT ' : ', 'Не найден sku ' + model(x), dt, type(x);
+        }
+        FOR INTEGER x = [GROUP MAX INTEGER i IF type(i) != typeOrder(t) AND type(i) != typeReturn(t) AND NOT otherAccount(type(i), t) BY dateTime(i)](STRING dt) DO{
+            error(type(x) + ' : ' + dt, t) <- CONCAT ' : ', 'Не найден статус ' + type(x), dt, model(x);
+        }
+        
+        IF (GROUP SUM 1 IF error(STRING s, t)) THEN {
+            MESSAGE 'По таблице есть ошибки, импорт не возможен';
+            APPLY;
+            RETURN;
+        }
+        referenceExt (INTEGER i) <- CASE 
+                                        WHEN reference(i) THEN reference(i)
+                                        WHEN otherAccount(type(i), t) AND NOT reference(i) THEN dateTime(i)
+        ;
+        
+        quantityExt(INTEGER i) <- CASE 
+                                      WHEN type(i) = typeOrder(t) THEN quantity(i)
+                                      WHEN type(i) = typeReturn(t) THEN -quantity(i)
+                                      WHEN otherAccount(type(i), t) THEN 1
+        ;
+        index(INTEGER i) <- PARTITION SUM 1 ORDER i BY referenceExt(i), item(i);
+        total(INTEGER i) <- parseSum2(productSalesStr(i), t);
+        other(INTEGER i) <- parseSum2(otherStr(i), t);
+        FOR otherStr(INTEGER  i)  DO{
+            printToLog(CONCAT ' : ', otherStr(i), other(i), '1 ' + parseSum(otherStr(i), t), '2 ' + parseSum2(otherStr(i), t));
+        }
+//        NUMERIC[14,2](replace((IF NOT countryDivideSymbol(t) != '.'  OR NOT countryDivideSymbol(t) THEN replace(productSalesStr(i), '.', '') ELSE productSalesStr(i)), ' ', ''));
+
+//        total(INTEGER i) <- IF productSales(i) = 0 THEN NUMERIC[14,2](replace(totalStr(i), '.', '')) 
+//            ELSE productSales(i);
+        
+        FOR [GROUP MAX INTEGER i BY dateTimeExt(i)](DATE d) AND NOT invoice(t, d) DO NEW i = Invoice{
+            dateTime(i) <- dateTimeToDateTime(d, TIME('23:59:59'));
             type(i) <- amazonInvoiceType();
             customer(i) <- FBAPartner();
             location(i) <- location('MX000004');
@@ -130,45 +205,46 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (ImportT
             country(i) <- country(t);
             marketplace(i) <- marketplace(t);
             eStore(i) <- eStore(t);
-            //status(i) <- InvoiceStatus.draft;
         }
-        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == amazonInvoiceType() AND customer(ii) == FBAPartner() AND eStore(i) = eStore(t) AND country(i) = country(t) ORDER dateTime(ii), ii) DO {
+
+        FOR INTEGER xx = [GROUP MAX INTEGER i BY dateTimeExt(i)](DATE d) AND Invoice i = invoice(t, d) DO{
+            
             LOCAL part = INTEGER(InvoiceLine);
             part(InvoiceLine l) <- PARTITION SUM 1 IF invoice(l) == i ORDER index(l), l BY invoice(l), customerReference(l), item(l);
 
-            FOR [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) NEW l = InvoiceLine DO {
+            FOR [GROUP MAX INTEGER j BY referenceExt(j), item(j), index(j), dateTimeExt(j)](STRING[30] ref, Item item, INTEGER index, d) AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l), date(l)](ref,item,index, d) NEW l = InvoiceLine DO {
                 invoice(l) <- i;
                 customerReference(l) <- ref;
                 item(l) <- item;
                 part(l) <- index;
             }
             
-            FOR INTEGER x = [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND InvoiceLine il == [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) DO {
-                quantity(il) <- quantity(x);
-                untaxedAmount(il) <- total(x);
-                price(il) <- NUMERIC[10,2](total(x)/quantity(x));
+            FOR INTEGER x = [GROUP MAX INTEGER j BY referenceExt(j), item(j), index(j), dateTimeExt(j)](STRING[30] ref, Item item, INTEGER index, d) AND InvoiceLine il == [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l), date(l)](ref,item,index, d) DO {
+                quantity(il) <- quantityExt(x);
+                untaxedAmount(il) <- total(x) IF total(x) > 0;
+                price(il) <- NUMERIC[10,2](total(x)/quantityExt(x));
                 
                 in(il, Tax tt) <- NULL;
                 taxAmount(Tax tt, il) <- NULL;
                 IF productSalesTax(x) > 0 OR productSalesTax(x) < 0 THEN {
                     in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на продажу товаров';
-                    taxAmount(Tax tt, il) <- productSalesTax(x) WHERE name(tt) == 'Налог на продажу товаров';
+                    taxAmount(Tax tt, il) <- -productSalesTax(x) WHERE name(tt) == 'Налог на продажу товаров';
                 }
                 IF shippingCreditsTax(x) > 0 OR shippingCreditsTax(x) < 0 THEN {
                     in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на кредит на доставку';
-                    taxAmount(Tax tt, il) <- shippingCreditsTax(x) WHERE name(tt) == 'Налог на кредит на доставку';
+                    taxAmount(Tax tt, il) <- -shippingCreditsTax(x) WHERE name(tt) == 'Налог на кредит на доставку';
                 }
                 IF giftwrapCreditsTax(x) > 0 OR giftwrapCreditsTax(x) < 0 THEN {
                     in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на подарочную упаковку';
-                    taxAmount(Tax tt, il) <- giftwrapCreditsTax(x) WHERE name(tt) == 'Налог на подарочную упаковку';
+                    taxAmount(Tax tt, il) <- -giftwrapCreditsTax(x) WHERE name(tt) == 'Налог на подарочную упаковку';
                 }
                 IF promotionalRebatesTax(x) > 0 OR promotionalRebatesTax(x) < 0 THEN {
                     in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на рекламные скидки';
-                    taxAmount(Tax tt, il) <- promotionalRebatesTax(x) WHERE name(tt) == 'Налог на рекламные скидки';
+                    taxAmount(Tax tt, il) <- -promotionalRebatesTax(x) WHERE name(tt) == 'Налог на рекламные скидки';
                 }
                 IF marketplaceWithheldTax(x) > 0 OR marketplaceWithheldTax(x) < 0 THEN {
                     in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог, удерживаемый на рынке';
-                    taxAmount(Tax tt, il) <- marketplaceWithheldTax(x) WHERE name(tt) == 'Налог, удерживаемый на рынке';
+                    taxAmount(Tax tt, il) <- -marketplaceWithheldTax(x) WHERE name(tt) == 'Налог, удерживаемый на рынке';
                 }
 
                 dataAmount(il, CustomSalesAccount aa) <- NULL;
@@ -193,82 +269,9 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (ImportT
                 IF other(x) > 0 OR other(x) < 0 THEN {
                     dataAmount(il, CustomSalesAccount aa) <- -other(x) WHERE id(aa) == 'other';
                 }
-            }
-
-            FOR DATE nextDate = sum(date,1) AND lastDayOfMonth(date) == date DO {
-                getValuesRange(idTable(t), lpad(STRING(extractMonthNumber(nextDate)),2,'0') + '!A9:AA', defaultAccount());
-                valuesRows(INTEGER ii) <- replace(replace(replace(replace(replace(valuesRows(ii), ';', ''), '[', ''), ']', ''), '",', ';'), '"', '');
-                str() <- GROUP CONCAT valuesRows(INTEGER j), '\n' ORDER i;
-                stringToFile(str());
-
-                IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G,
-                                                             productSales = N, productSalesTax = O, postageCredits = P,
-                                                             shippingCreditsTax = Q, giftWrapCredits = R, giftwrapCreditsTax = S,
-                                                             promotionalRebates = T, promotionalRebatesTax = U,
-                                                             marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
-                                                             otherTransactionFees = Y, other = Z, total = AA;
-
-                item(INTEGER ii) <- productModel(model(ii)) IF type(ii) == typeOrder(t) AND toDateFormat(dateTime(i), 'MM/dd/yy') == date;
-                index(INTEGER ii) <- PARTITION SUM 1 ORDER ii BY reference(ii), item(ii);
-
-                FOR [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) NEW l = InvoiceLine DO {
-                    invoice(l) <- i;
-                    customerReference(l) <- ref;
-                    item(l) <- item;
-                    part(l) <- index;
-                }
-
-                FOR INTEGER x = [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND InvoiceLine il == [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) DO {
-                    quantity(il) <- quantity(x);
-                    untaxedAmount(il) <- total(x);
-                    price(il) <- NUMERIC[10,2](total(x)/quantity(x));
-
-                    in(il, Tax tt) <- NULL;
-                    taxAmount(Tax tt, il) <- NULL;
-                    IF productSalesTax(x) > 0 OR productSalesTax(x) < 0 THEN {
-                        in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на продажу товаров';
-                        taxAmount(Tax tt, il) <- productSalesTax(x) WHERE name(tt) == 'Налог на продажу товаров';
-                    }
-                    IF shippingCreditsTax(x) > 0 OR shippingCreditsTax(x) < 0 THEN {
-                        in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на кредит на доставку';
-                        taxAmount(Tax tt, il) <- shippingCreditsTax(x) WHERE name(tt) == 'Налог на кредит на доставку';
-                    }
-                    IF giftwrapCreditsTax(x) > 0 OR giftwrapCreditsTax(x) < 0 THEN {
-                        in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на подарочную упаковку';
-                        taxAmount(Tax tt, il) <- giftwrapCreditsTax(x) WHERE name(tt) == 'Налог на подарочную упаковку';
-                    }
-                    IF promotionalRebatesTax(x) > 0 OR promotionalRebatesTax(x) < 0 THEN {
-                        in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог на рекламные скидки';
-                        taxAmount(Tax tt, il) <- promotionalRebatesTax(x) WHERE name(tt) == 'Налог на рекламные скидки';
-                    }
-                    IF marketplaceWithheldTax(x) > 0 OR marketplaceWithheldTax(x) < 0 THEN {
-                        in(il, Tax tt) <- TRUE WHERE name(tt) == 'Налог, удерживаемый на рынке';
-                        taxAmount(Tax tt, il) <- marketplaceWithheldTax(x) WHERE name(tt) == 'Налог, удерживаемый на рынке';
-                    }
-
-                    dataAmount(il, CustomSalesAccount aa) <- NULL;
-                    IF postageCredits(x) > 0 OR postageCredits(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- -postageCredits(x) WHERE id(aa) == 'postage_credits';
-                    }
-                    IF giftWrapCredits(x) > 0 OR giftWrapCredits(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- -giftWrapCredits(x) WHERE id(aa) == 'gift_wrap_credits';
-                    }
-                    IF promotionalRebates(x) > 0 OR promotionalRebates(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- -promotionalRebates(x) WHERE id(aa) == 'promotional_rebates';
-                    }
-                    IF sellingFees(x) > 0 OR sellingFees(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- -sellingFees(x) WHERE id(aa) == 'selling_fees';
-                    }
-                    IF fbaFees(x) > 0 OR fbaFees(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- -fbaFees(x) WHERE id(aa) == 'fba_fees';
-                    }
-                    IF otherTransactionFees(x) > 0 OR otherTransactionFees(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- -otherTransactionFees(x) WHERE id(aa) == 'other_transaction_fees';
-                    }
-                    IF other(x) > 0 OR other(x) < 0 THEN {
-                        dataAmount(il, CustomSalesAccount aa) <- -other(x) WHERE id(aa) == 'other';
-                    }
-                }
+                FOR OtherAccount oa = otherAccount(type(x), t) AND item(x) != item(oa) DO
+                    dataAmount(il, oa) <- -parseSum2(totalStr(x), t);
+//                        NUMERIC[14,2](replace(totalStr(x), '.', ''));
             }
         }
         APPLY;
@@ -294,18 +297,31 @@ importInvoiceAmazon 'Импорт реализации с Амазон' () {
     }
 }
 
-EXTEND FORM integrationData
+EXTEND FORM Sales.options
     OBJECTS it = ImportTable
-    PROPERTIES (it) nameMarketplace, nameCountry, nameEStore, idTable, typeOrder, active
+    PROPERTIES (it) nameMarketplace, nameCountry, nameEStore, idTable, typeOrder, typeReturn, active FIRST 
     PROPERTIES(it) TOOLBAR importInvoiceAmazon, importProductsAmazon
     PROPERTIES (it) NEW, EDIT, DELETE
     PROPERTIES() nameAmazonInvoiceType, importInvoiceAmazon
+    
+    OBJECTS error = STRING
+    PROPERTIES READONLY 'Ошибка' = VALUE(error), error(error, it)
+    FILTERS error(error, it)
+    
+    
+    OBJECTS oa = OtherAccount
+    PROPERTIES caption(oa, it) COLUMNS (oa) HEADER name(oa) GRID DRAW it
+    
 ;
-DESIGN integrationData{
-    optionsImport{
-        MOVE PROPERTY(nameAmazonInvoiceType()) BEFORE actionImport;
-        actionImport{
-            MOVE PROPERTY(importInvoiceAmazon());
+DESIGN Sales.options{
+    tabbedPane{
+        NEW import{
+            caption = 'Импорт';
+            MOVE BOX (it);
+            MOVE BOX (error);
+            MOVE PROPERTY (nameAmazonInvoiceType());
+            MOVE PROPERTY (importInvoiceAmazon());
+            
         }
     }
 }
@@ -374,6 +390,9 @@ importProductsEbay 'Импорт товаров с eBay' (ImportTable t){
     importProducts(idTable(t), 'SKU!G2:H', categoryByName('Аксессуары'));
 }
 
+invoiceEbay (DATE d, ImportTable t) = GROUP LAST Invoice ii IF date(ii) == d AND type(ii) == ebayInvoiceType() 
+    AND customer(ii) == FBAPartner() AND eStore(ii) = eStore(t) AND country(ii) = country(t) ORDER dateTime(ii), ii;
+
 importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DATE date, BOOLEAN skipImportProducts) {
     IF NOT skipImportProducts THEN  importProductsEbay(t);
 
@@ -392,11 +411,14 @@ importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DA
         LOCAL date = DATE(INTEGER);
         LOCAL type = STRING(INTEGER);
         LOCAL reference = STRING(INTEGER);
+        LOCAL referenceExt = STRING(INTEGER);
         LOCAL article = STRING(INTEGER);
         LOCAL model = STRING(INTEGER);
         LOCAL quantity = NUMERIC[16,3](INTEGER);
+        LOCAL quantityExt = NUMERIC[16,3](INTEGER);
         LOCAL sum = NUMERIC[14,2](INTEGER);
         LOCAL productSales = NUMERIC[14,2](INTEGER);
+        LOCAL productSalesStr = STRING(INTEGER);
         LOCAL packagingAndShipping = NUMERIC[14,2](INTEGER);
         LOCAL sellerTax = NUMERIC[14,2](INTEGER);
         LOCAL ebayTax = NUMERIC[14,2](INTEGER);
@@ -407,6 +429,7 @@ importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DA
         LOCAL internationalFees = NUMERIC[14,2](INTEGER);
         LOCAL charityDonation = NUMERIC[14,2](INTEGER);
         LOCAL total = NUMERIC[14,2](INTEGER);
+        LOCAL totalStr = STRING(INTEGER);
         LOCAL item = Item(INTEGER);
         LOCAL index = INTEGER(INTEGER);
 
@@ -415,40 +438,53 @@ importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DA
         str() <- GROUP CONCAT valuesRows(INTEGER i), '\n' ORDER i;
         stringToFile(str());
 
-        IMPORT CSV ';' NOHEADER FROM resultFile() TO date = A, type = B, reference = C, article = R, model = U, quantity = V,
-                                                     sum = W, productSales = K, packagingAndShipping = X, sellerTax = Y,
+        IMPORT CSV ';' NOHEADER FROM resultFile() TO date = A, type = B, referenceExt = C, article = R, model = U, quantity = V,
+                                                     sum = W, totalStr = K, packagingAndShipping = X, sellerTax = Y,
                                                      ebayTax = Z, fixedSalesCommission = AB, variableSalesCommission = AC,
                                                      highRateOfNotDescribedItemsFee = AD, belowAverageServiceFees = AE,
-                                                     internationalFees = AF, charityDonation = AG, total = AH;
+                                                     internationalFees = AF, charityDonation = AG, productSalesStr = AH;
 
-        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == typeOrder(t) AND date(i) == date;
+        item(INTEGER i) <- (OVERRIDE item(otherAccount(type(i), t)), productModel(model(i)));
+        reference (INTEGER i) <- CASE
+            WHEN referenceExt(i) AND referenceExt(i) != '--' THEN referenceExt(i)
+            WHEN otherAccount(type(i), t) AND referenceExt(i) = '--' THEN i + '_' + date(i)
+        ;
+
+        quantityExt(INTEGER i) <- CASE
+            WHEN type(i) = typeOrder(t) THEN quantity(i)
+            WHEN type(i) = typeReturn(t) THEN -quantity(i)
+            WHEN otherAccount(type(i), t) THEN 1
+        ;
+        //        item(INTEGER i) <- productModel((GROUP MAX baseModel(INTEGER j) IF amzModel(j) == model(i))) IF type(i) == typeOrder(t);
         index(INTEGER i) <- PARTITION SUM 1 ORDER i BY reference(i), item(i);
-
-        IF NOT (GROUP MAX Invoice i IF date(i) == date AND type(i) == ebayInvoiceType() AND customer(i) == FBAPartner() AND eStore(i) = eStore(t) AND country(i) = country(t)) THEN NEW i = Invoice {
-            dateTime(i) <- dateTimeToDateTime(date, TIME('23:59:59'));
+        total(INTEGER i) <- NUMERIC[14,2]((replace(productSalesStr(i), '--', '')));
+        
+        FOR INTEGER x = [GROUP MAX INTEGER ii BY date(ii)](DATE d) AND NOT invoiceEbay(d, t) NEW i = Invoice DO{
+            dateTime(i) <- dateTimeToDateTime(d, TIME('23:59:59'));
             type(i) <- ebayInvoiceType();
             customer(i) <- FBAPartner();
             location(i) <- location('MX000004');
             country(i) <- country(t);
             marketplace(i) <- marketplace(t);
             eStore(i) <- eStore(t);
-            //status(i) <- InvoiceStatus.draft;
+            ready(i) <- TRUE ;
         }
-        FOR Invoice i == (GROUP LAST Invoice ii IF date(ii) == date AND type(ii) == ebayInvoiceType() AND customer(ii) == FBAPartner() AND eStore(i) = eStore(t) AND country(i) = country(t) ORDER dateTime(ii), ii) DO {
+        FOR [GROUP MAX INTEGER ii BY date(ii)](DATE d) AND Invoice i = invoiceEbay(d, t) DO{
             LOCAL part = INTEGER(InvoiceLine);
             part(InvoiceLine l) <- PARTITION SUM 1 IF invoice(l) == i ORDER index(l), l BY invoice(l), customerReference(l), item(l);
 
-            FOR [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) NEW l = InvoiceLine DO {
+            
+            FOR [GROUP MAX INTEGER j IF date(j) = d BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) 
+                AND NOT [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l), date(l)](ref,item,index, d) NEW l = InvoiceLine DO {
                 invoice(l) <- i;
                 customerReference(l) <- ref;
                 item(l) <- item;
-                part(l) <- index;
             }
 
-            FOR INTEGER x = [GROUP MAX INTEGER j BY reference(j), item(j), index(j)](STRING[30] ref, Item item, INTEGER index) AND InvoiceLine il == [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l)](ref,item,index) DO {
-                quantity(il) <- quantity(x);
-                untaxedAmount(il) <- sum(x);
-                price(il) <- NUMERIC[10,2](sum(x)/quantity(x));
+            FOR INTEGER x = [GROUP MAX INTEGER j IF date(j) = d BY reference(j), item(j), index(j), date(j)](STRING[30] ref, Item item, INTEGER index, d) AND InvoiceLine il == [GROUP MAX InvoiceLine l IF invoice(l) == i BY customerReference(l), item(l), part(l), date(l)](ref,item,index,d) DO {
+                quantity(il) <- quantityExt(x);
+                untaxedAmount(il) <- total(x);
+                price(il) <- NUMERIC[10,2](total(x)/quantityExt(x));
 
                 in(il, Tax tt) <- NULL;
                 taxAmount(Tax tt, il) <- NULL;
@@ -489,6 +525,8 @@ importInvoiceEbay 'Импорт реализации с eBay' (ImportTable t, DA
                 IF other() > 0 OR other() < 0 THEN {
                     dataAmount(il, CustomSalesAccount aa) <- other() WHERE id(aa) == 'other_fees';
                 }
+                FOR OtherAccount oa = otherAccount(type(x), t) AND item(x) != item(oa) DO
+                    dataAmount(il, oa) <- -NUMERIC[14,2](total(x));
             }
         }
         APPLY;
@@ -514,16 +552,14 @@ importInvoiceEbay 'Импорт реализации с eBay' () {
     }
 }
 
-EXTEND FORM integrationData
+EXTEND FORM Sales.options
     PROPERTIES(it) TOOLBAR importInvoiceEbay
     PROPERTIES() nameEbayInvoiceType, importInvoiceEbay
 ;
-DESIGN integrationData{
-    optionsImport{
-        MOVE PROPERTY(nameEbayInvoiceType()) BEFORE actionImport;
-        actionImport{
-            MOVE PROPERTY(importInvoiceEbay());
-        }
+DESIGN Sales.options{
+    import{
+        MOVE PROPERTY(nameEbayInvoiceType());
+        MOVE PROPERTY(importInvoiceEbay());
     }
 }
 
