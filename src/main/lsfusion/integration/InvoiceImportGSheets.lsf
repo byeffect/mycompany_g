@@ -104,9 +104,12 @@ divideSymbol 'Разделитель' = DATA STRING[1] (Country);
 countryDivideSymbol (ImportTable t) = divideSymbol(country(t));
 dateFormat 'Формат даты' = DATA STRING (Country);
 dateFormat (ImportTable t) = dateFormat(country(t));
+useShortFormat 'Исп.сокращеный формат для импорта' = DATA BOOLEAN (Country);
+useShortFormat 'Исп.сокращеный формат для импорта' (ImportTable t) = useShortFormat(country(t));
 
-EXTEND FORM country
-    PROPERTIES (c) divideSymbol, dateFormat
+
+EXTEND FORM countries
+    PROPERTIES (c) divideSymbol, dateFormat, useShortFormat
 ;
 parseSum (STRING s, ImportTable t) = NUMERIC[14,2](replace((IF countryDivideSymbol(t) != '.'  OR NOT countryDivideSymbol(t) THEN replace(s, '.', '') ELSE s), ' ', ''));
 parseSum2 (STRING s, ImportTable t) = NUMERIC[14,2](replace((IF countryDivideSymbol(t) != '.'  OR NOT countryDivideSymbol(t) THEN replace(s, '.', '') ELSE s), '\\u202f', ''));
@@ -152,12 +155,23 @@ importInvoiceAmazon 'Импорт реализации с Амазон' (ImportT
         str() <- IF countryDivideSymbol(t) != '.' OR NOT countryDivideSymbol(t) THEN replace(str(), '.', '') ELSE str();
         stringToFile(str());
         
-        IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G,
-                                                     productSalesStr = N, productSalesTax = O, postageCredits = P,
-                                                     shippingCreditsTax = Q, giftWrapCredits = R, giftwrapCreditsTax = S,
-                                                     promotionalRebates = T, promotionalRebatesTax = U,
-                                                     marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
-                                                     otherTransactionFees = Y, otherStr = Z, totalStr = AA;
+        IF useShortFormat(t) THEN{
+            IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G,
+                    productSalesStr = M, 
+                    postageCredits = N,
+                    giftWrapCredits = O,
+                    promotionalRebates = P,
+                    productSalesTax = Q,
+                    marketplaceWithheldTax = R, sellingFees = S, fbaFees = T,
+                    otherTransactionFees = U, otherStr = V, totalStr = W;
+        } ELSE{
+            IMPORT CSV ';' NOHEADER FROM resultFile() TO dateTime = A, type = C, reference = D, model = E, quantity = G,
+                    productSalesStr = N, productSalesTax = O, postageCredits = P,
+                    shippingCreditsTax = Q, giftWrapCredits = R, giftwrapCreditsTax = S,
+                    promotionalRebates = T, promotionalRebatesTax = U,
+                    marketplaceWithheldTax = V, sellingFees = W, fbaFees = X,
+                    otherTransactionFees = Y, otherStr = Z, totalStr = AA;
+        }
         
         item(INTEGER i) <- (OVERRIDE item(otherAccount(type(i), t)), productModel(model(i)));
         dateTimeExt(INTEGER i) <- toDateFormat(dateTime(i), OVERRIDE dateFormat(t), 'MM/dd/yy');

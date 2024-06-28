@@ -30,3 +30,7 @@ nameCountry 'Страна' (Invoice i) = name(country(i));
 
 country(InvoiceLine l) = country(invoice(l));
 nameCountry 'Страна' (InvoiceLine l) = name(country(l));
+
+EXTEND FORM invoices
+    PROPERTIES (i) READONLY nameCountry, nameMarketplace, nameEStore
+;
