@@ -61,7 +61,7 @@ FORM emailReports 'Отчеты на email'
 ;
 
 NAVIGATOR {
-    reporting{
+    Sales.reporting{
         NEW emailReports;
     }
 }

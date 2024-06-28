@@ -104,6 +104,8 @@ CLASS ABSTRACT Metric 'Метрика';
 
 name 'Наименование' = ABSTRACT STRING (Metric);
 measure 'Показатель' = ABSTRACT NUMERIC[14,2](Metric, DATE);
+skip = ABSTRACT BOOLEAN (Metric);
+
 order = ABSTRACT INTEGER (Metric);
 filter = ABSTRACT CASE BOOLEAN (Metric, SalesLedger);
 
@@ -142,6 +144,7 @@ customMeasure (CustomMetric m, DATE d) += WHEN m = CustomMetric.returnQty AND d 
 EXTEND CLASS SalesAccount : Metric;
 name (SalesAccount a) += STRING(name(a));
 measure(SalesAccount a, DATE d) += amount(a, d);
+skip (SalesAccount a) += a IS SalesAccount AND NOT filter(a);
 order(SalesAccount a) += 5;
 filter(SalesAccount a, SalesLedger l) += WHEN amount(l, a) THEN TRUE;
 
@@ -153,10 +156,12 @@ filteredService (SalesLedger l) = (date(l) >= plFrom() AND date(l) <= plTo()) AN
 ;
 measureService (Service s, DATE d) = GROUP SUM amount(SalesLedger l, SalesAccount a) IF filteredService(l) AND item(l) = s AND 
     numberMonth(l) = extractMonthNumber(d) AND year(l) = extractYear(d);
+skip (Service s) += s IS Service AND NOT (GROUP SUM amount(SalesLedger l, SalesAccount a) IF filteredService(l) AND item(l) = s);
+
 measure (Service s, DATE d) +=  measureService(s, d);
 order(Service s) += 6;
 
-filter(Metric m) = GROUP SUM 1 IF measure(m, DATE d) AND iterate(d, plFrom(), plTo()) AND d = firstDayOfMonth(d);
+//filter(Metric m) = GROUP SUM 1 IF measure(m, DATE d) AND iterate(d, plFrom(), plTo()) AND d = firstDayOfMonth(d);
 
 filter(Metric s, SalesLedger l) += WHEN item(l) = s AND s IS Service THEN TRUE;
 
@@ -204,7 +209,7 @@ FORM reportPL 'Отчет PL'
         ON CONTEXTMENU showDetails(a, d), order(a) SHOWIF NULL
     FILTERS iterate(d, plFrom(), plTo()) AND d = firstDayOfMonth(d) 
     ORDERS order(a)
-    FILTERS filter(a)
+    FILTERS NOT skip(a)
 ;
 
 
