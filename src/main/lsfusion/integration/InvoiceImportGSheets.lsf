@@ -34,7 +34,7 @@ nameItem 'Item' (OtherAccount a) = name(item(a));
 caption = DATA STRING (OtherAccount, ImportTable);
 otherAccount (STRING s, ImportTable t) = GROUP MAX OtherAccount oa BY caption(oa, t);
 skip 'Не учитывать' = DATA BOOLEAN (OtherAccount);
-skip(Item i) = skip(GROUP MAX OtherAccount a IF item(a) = i);
+skip(Item i) = skip(GROUP MAX OtherAccount a IF item(a) = i) MATERIALIZED;
 
 EXTEND FORM Sales.options
     OBJECTS a = OtherAccount

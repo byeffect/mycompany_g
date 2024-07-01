@@ -1,0 +1,61 @@
+MODULE CostLedgerCustom;
+
+REQUIRE CostLedger;
+
+NAMESPACE Inventory;
+
+calculateCostSingleFIFO () {
+    // fifo / average
+    NEWSESSION NESTED (calcCost[CostLedger]) {
+        APPLY NESTED (calcCost[CostLedger]) {
+            quantity(OutCostLedger out, InCostLedger in) <- NULL WHERE calcCost(out);
+        }
+    }
+
+    LOCAL ordered = INTEGER (OutCostLedger);
+    ordered(OutCostLedger ledger) <- PARTITION SUM 1 IF calcCost(ledger)
+        ORDER dateTime(ledger), ledger
+        BY product(ledger);
+
+    FOR iterate(INTEGER i, 1, (GROUP MAX ordered(OutCostLedger ledger))) DO {
+        LOCAL iteration = BOOLEAN (OutCostLedger);
+        iteration(OutCostLedger l) <- ordered(l) = i;
+
+        NEWSESSION NESTED (iteration[OutCostLedger]) {
+            APPLY NESTED (iteration[OutCostLedger]) {
+                quantity(OutCostLedger ol, InCostLedger il) <- (PARTITION UNGROUP negSignedQuantity
+                    LIMIT STRICT notCosted(il) IF location(ol) = location(il)
+                        AND product(ol) = product(il)
+                    //                    AND dateTime(il) <= dateTime(ol)
+                    ORDER dateTime(il), il
+                    BY ol)
+                    WHERE iteration(ol) AND signedQuantity(ol) <= 0;
+            }
+        }
+
+        NEWSESSION NESTED (iteration[OutCostLedger]) {
+            APPLY {
+                quantity(OutCostLedger ol, InCostLedger il) <- -(PARTITION UNGROUP signedQuantity
+                    LIMIT STRICT costed(il) IF location(ol) = location(il)
+                        AND product(ol) = product(il)
+                    //                    AND dateTime(il) <= dateTime(ol)
+                    ORDER DESC dateTime(il), il
+                    BY ol)
+                    WHERE iteration(ol) AND signedQuantity(ol) > 0;
+            }
+        }
+
+    }
+
+    NEWSESSION NESTED (calcCost[OutCostLedger]) {
+        APPLY {
+            amount (OutCostLedger ol) <- NUMERIC[14,2](GROUP SUM quantity(ol, InCostLedger il) * price(il))
+                WHERE calcCost(ol) AND costingMethod(product(ol)) = CostingMethod.fifo;
+        }
+    }
+}
+
+recalculateCostSingle 'Recalculate cost' (DATE d, Location lc) {
+    calcCost(CostLedger l) <- dateTime(l) >= DATETIME(d) AND location(l) = lc;
+    calculateCostSingleFIFO();
+}

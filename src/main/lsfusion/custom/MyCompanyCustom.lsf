@@ -38,7 +38,7 @@ REQUIRE Eval, ProcessMonitor, Backup,
         SalesLedgerAccountBillInvoiceQuantity,
 
         ReceiptPlan, Return,
-        InvLedgerCustom, DefectMobile,
+        InvLedgerCustom, CostLedgerCustom, DefectMobile,
 
         ManufacturingCustom,
         InventoryPartnerReportCustom, EmailReportCustom, InventoryPartnerReportGSSheets,
