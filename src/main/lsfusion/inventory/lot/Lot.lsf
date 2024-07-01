@@ -26,7 +26,6 @@ DESIGN lot {
     caption = badged('Lot', id(l));
     OBJECTS {        
         NEW statusPane FIRST {
-            caption = 'Statuses';
             horizontal = TRUE;
             alignment = STRETCH;                          
             NEW statusActions {
