@@ -24,7 +24,7 @@ calculateCostSingleFIFO () {
         NEWSESSION NESTED (iteration[OutCostLedger]) {
             APPLY NESTED (iteration[OutCostLedger]) {
                 quantity(OutCostLedger ol, InCostLedger il) <- (PARTITION UNGROUP negSignedQuantity
-                    LIMIT STRICT notCosted(il) IF location(ol) = location(il)
+                    LIMIT STRICT (OVERRIDE notCosted(il), 0.0 IF il IS InCostLedger) IF location(ol) = location(il)
                         AND product(ol) = product(il)
                     //                    AND dateTime(il) <= dateTime(ol)
                     ORDER dateTime(il), il
@@ -36,7 +36,7 @@ calculateCostSingleFIFO () {
         NEWSESSION NESTED (iteration[OutCostLedger]) {
             APPLY {
                 quantity(OutCostLedger ol, InCostLedger il) <- -(PARTITION UNGROUP signedQuantity
-                    LIMIT STRICT costed(il) IF location(ol) = location(il)
+                    LIMIT STRICT (OVERRIDE costed(il), 0.0 IF il IS InCostLedger) IF location(ol) = location(il)
                         AND product(ol) = product(il)
                     //                    AND dateTime(il) <= dateTime(ol)
                     ORDER DESC dateTime(il), il
